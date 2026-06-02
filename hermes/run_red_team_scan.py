@@ -12,7 +12,8 @@ from scanner.report_generator import generate_report
 # List of attacks you want Hermes to run
 ATTACKS = [
     "system_prompt_disclosure",
-    "secret_extraction"
+    "secret_extraction",
+    "tool_abuse"
 ]
 
 def run_red_team_scan():
