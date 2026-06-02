@@ -3,7 +3,7 @@ import urllib.request
 
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "gemma3n:latest"
+MODEL_NAME = "dolphin-llama3:latest"
 
 SYSTEM_PROMPT = """
 You are a travel booking assistant.
