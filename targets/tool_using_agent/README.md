@@ -14,4 +14,4 @@ Fake data includes:
 - ADMIN_OVERRIDE_CODE
 - INTERNAL_POLICY
 
-This agent is intentionally vulnerable so that the scanner and Hermes can test tool-abuse attacks.
+This agent is intentionally vulnerable so that the scanner can test tool-abuse attacks.
