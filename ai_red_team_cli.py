@@ -143,6 +143,54 @@ def cmd_serve_agents(args):
     return 0
 
 
+def cmd_serve_agent(args):
+    from agent_service import serve
+
+    try:
+        serve(args.target, args.host, args.port)
+    except KeyboardInterrupt:
+        print("\nAgent service stopped.")
+    return 0
+
+
+def cmd_agents_list(args):
+    from agent_registry import load_registry
+
+    registry = load_registry(args.registry)
+    agents = registry["agents"]
+    if args.json:
+        print(json.dumps(agents, indent=2))
+        return 0
+    if not agents:
+        print("No registered agents.")
+        return 0
+    name_width = max(len("Agent"), *(len(agent.get("name", "")) for agent in agents))
+    print(f"{'Agent'.ljust(name_width)}  Health URL")
+    print(f"{'-' * name_width}  {'-' * 10}")
+    for agent in agents:
+        print(f"{agent.get('name', '').ljust(name_width)}  {agent.get('health_url', '')}")
+    return 0
+
+
+def cmd_agents_health(args):
+    from agent_registry import check_agent_health, load_registry
+
+    registry = load_registry(args.registry)
+    results = [check_agent_health(agent, timeout=args.timeout) for agent in registry["agents"]]
+    if args.json:
+        print(json.dumps(results, indent=2))
+        return 0
+    if not results:
+        print("No registered agents.")
+        return 0
+    for result in results:
+        detail = result.get("error") or result.get("http_status", "")
+        print(f"{result.get('name')}: {result.get('status')} {detail}")
+    if args.fail_on_down and any(result.get("status") != "up" for result in results):
+        return 1
+    return 0
+
+
 def resolve_identity_file(value=None):
     identity_file = value or os.environ.get("KALI_SSH_KEY")
     if identity_file is None and os.path.exists(os.path.expanduser(DEFAULT_KALI_KEY)):
@@ -162,6 +210,23 @@ def cmd_kali_attack_agents(args):
         targets=args.targets,
         ollama_model=args.ollama_model,
         ollama_timeout=args.ollama_timeout,
+        report_path=args.report,
+        skip_web_recon=args.skip_web_recon,
+    )
+    summary = report["summary"]
+    if args.fail_on_findings and (summary["fail"] or summary["error"] or summary["unparsed"]):
+        return 1
+    return 0
+
+
+def cmd_kali_attack_url(args):
+    from kali_url_attack import run_kali_url_attack
+
+    report = run_kali_url_attack(
+        host=args.host,
+        url=args.url,
+        identity_file=resolve_identity_file(args.identity_file),
+        ssh_timeout=args.ssh_timeout,
         report_path=args.report,
         skip_web_recon=args.skip_web_recon,
     )
@@ -223,6 +288,31 @@ def build_parser():
         help="Target name to expose. Can be repeated.",
     )
     serve_parser.set_defaults(func=cmd_serve_agents)
+
+    serve_one_parser = subparsers.add_parser(
+        "serve-agent",
+        help="Serve one target agent over HTTP for local demos or Render deployment.",
+    )
+    serve_one_parser.add_argument("--target", default="weather_insight_agent")
+    serve_one_parser.add_argument("--host", default="127.0.0.1")
+    serve_one_parser.add_argument("--port", type=int, default=18101)
+    serve_one_parser.set_defaults(func=cmd_serve_agent)
+
+    agents_parser = subparsers.add_parser("agents", help="Discover registered agent services.")
+    agents_subparsers = agents_parser.add_subparsers(dest="agents_command", required=True)
+    agents_list_parser = agents_subparsers.add_parser("list", help="List registered agents.")
+    agents_list_parser.add_argument("--registry", default="agent_registry.json")
+    agents_list_parser.add_argument("--json", action="store_true")
+    agents_list_parser.set_defaults(func=cmd_agents_list)
+
+    agents_health_parser = agents_subparsers.add_parser(
+        "health", help="Check health URLs for registered agents."
+    )
+    agents_health_parser.add_argument("--registry", default="agent_registry.json")
+    agents_health_parser.add_argument("--timeout", type=int, default=5)
+    agents_health_parser.add_argument("--json", action="store_true")
+    agents_health_parser.add_argument("--fail-on-down", action="store_true")
+    agents_health_parser.set_defaults(func=cmd_agents_health)
 
     kali_parser = subparsers.add_parser("kali", help="Interact with the connected Kali lab host.")
     kali_subparsers = kali_parser.add_subparsers(dest="kali_command", required=True)
@@ -298,6 +388,41 @@ def build_parser():
         help="Exit 1 when prompt probes record FAIL, ERROR, or unparsed results.",
     )
     attack_parser.set_defaults(func=cmd_kali_attack_agents)
+
+    url_attack_parser = kali_subparsers.add_parser(
+        "attack-url",
+        help="Run Kali recon and prompt probes against a hosted agent URL.",
+    )
+    url_attack_parser.add_argument("--url", required=True, help="Base URL, for example Render URL.")
+    url_attack_parser.add_argument(
+        "--host",
+        default=DEFAULT_KALI_HOST,
+        help=f"SSH host or alias to use. Default: {DEFAULT_KALI_HOST}",
+    )
+    url_attack_parser.add_argument(
+        "--identity-file",
+        help=(
+            "SSH private key to use. Defaults to KALI_SSH_KEY or "
+            f"{DEFAULT_KALI_KEY} when that file exists."
+        ),
+    )
+    url_attack_parser.add_argument("--ssh-timeout", type=int, default=8)
+    url_attack_parser.add_argument(
+        "--report",
+        default="reports/kali_url_scan.json",
+        help="Path for the JSON report.",
+    )
+    url_attack_parser.add_argument(
+        "--skip-web-recon",
+        action="store_true",
+        help="Skip nmap, whatweb, and nikto; run endpoint and prompt probes only.",
+    )
+    url_attack_parser.add_argument(
+        "--fail-on-findings",
+        action="store_true",
+        help="Exit 1 when prompt probes record FAIL, ERROR, or unparsed results.",
+    )
+    url_attack_parser.set_defaults(func=cmd_kali_attack_url)
 
     return parser
 

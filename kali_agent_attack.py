@@ -227,7 +227,11 @@ def _prompt_probe(host, port, timeout, identity_file, target, attack, prompt):
 
     parsed = None
     parse_error = None
-    if remote_result["stdout"]:
+    if remote_result["returncode"] != 0:
+        parse_error = remote_result["stderr"] or f"Remote command exited {remote_result['returncode']}."
+    elif not remote_result["stdout"]:
+        parse_error = "Remote command returned an empty response."
+    else:
         try:
             parsed = json.loads(remote_result["stdout"])
         except json.JSONDecodeError as exc:
