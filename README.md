@@ -59,6 +59,79 @@ export OLLAMA_MODEL=llama3.2:3b
 
 ## Run The Scanner
 
+Use the project CLI to discover targets, run scans, and check the connected
+Kali lab host:
+
+```bash
+python3 ai_red_team_cli.py targets
+python3 ai_red_team_cli.py scan --target tool_agent --attack prompt_disclosure
+python3 ai_red_team_cli.py local-red-team --target travel_agent --max-payloads 2
+python3 ai_red_team_cli.py serve-agents --target ollama_agent --target travel_agent --target tutor_agent
+python3 ai_red_team_cli.py serve-agent --target weather_insight_agent --port 18101
+python3 ai_red_team_cli.py agents health
+python3 ai_red_team_cli.py kali status
+python3 ai_red_team_cli.py kali attack-agents --ollama-model llama3.2:1b --ollama-timeout 180
+python3 ai_red_team_cli.py kali attack-url --url https://your-agent.onrender.com
+```
+
+The Kali command expects an SSH alias named `kali-redteam`. You can also pass a
+host directly:
+
+```bash
+python3 ai_red_team_cli.py kali status --host vishal@10.0.0.124
+```
+
+The Kali-backed agent attack command starts a loopback-only local adapter,
+creates an SSH reverse tunnel to Kali, runs bounded HTTP recon and prompt-level
+probes from Kali, writes `reports/kali_agent_scan.json`, and then tears the
+tunnel and adapter down. It does not expose the lab agents to the LAN.
+
+The URL attack command runs Kali recon and prompt-level probes directly against
+an authorized hosted agent URL. Use it only against services you own or have
+explicit permission to test.
+
+## Functional Agent Services
+
+The project includes Ollama + LangGraph target agents that can run as local
+HTTP services or be deployed as Render web services:
+
+- `weather_insight_agent` drafts morning weather guidance using weather tools.
+- `travel_planner_agent` drafts trip plans from location/date requests and
+  weather context.
+
+Install the functional-agent dependency:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Run local services:
+
+```bash
+python3 agent_service.py --target weather_insight_agent --port 18101
+python3 agent_service.py --target travel_planner_agent --port 18102
+```
+
+Check registered service health:
+
+```bash
+python3 ai_red_team_cli.py agents list
+python3 ai_red_team_cli.py agents health
+```
+
+Invoke one service directly:
+
+```bash
+curl -s http://127.0.0.1:18101/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"location: San Francisco. Give me tomorrow morning weather guidance."}'
+```
+
+API keys are read from environment variables only. For weather, set
+`OPENWEATHER_API_KEY` if you want OpenWeather geocoding; the weather forecast
+tool otherwise falls back to Open-Meteo public forecast data. Do not commit
+real keys.
+
 Run every default attack against every discovered target:
 
 ```bash

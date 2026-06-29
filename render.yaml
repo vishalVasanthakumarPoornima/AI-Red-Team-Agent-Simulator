@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: weather-insight-agent
+    env: python
+    buildCommand: python3 -m pip install -r requirements.txt
+    startCommand: python3 agent_service.py --target weather_insight_agent --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OLLAMA_MODEL
+        value: llama3.2:1b
+      - key: OLLAMA_TIMEOUT_SECONDS
+        value: "180"
+      - key: OPENWEATHER_API_KEY
+        sync: false
+
+  - type: web
+    name: travel-planner-agent
+    env: python
+    buildCommand: python3 -m pip install -r requirements.txt
+    startCommand: python3 agent_service.py --target travel_planner_agent --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OLLAMA_MODEL
+        value: llama3.2:1b
+      - key: OLLAMA_TIMEOUT_SECONDS
+        value: "180"
+      - key: OPENWEATHER_API_KEY
+        sync: false

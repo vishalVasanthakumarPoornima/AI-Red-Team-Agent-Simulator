@@ -1,0 +1,18 @@
+{
+  "agents": [
+    {
+      "name": "weather_insight_agent",
+      "kind": "http",
+      "health_url": "http://127.0.0.1:18101/health",
+      "invoke_url": "http://127.0.0.1:18101/invoke",
+      "description": "Ollama + LangGraph weather insight agent."
+    },
+    {
+      "name": "travel_planner_agent",
+      "kind": "http",
+      "health_url": "http://127.0.0.1:18102/health",
+      "invoke_url": "http://127.0.0.1:18102/invoke",
+      "description": "Ollama + LangGraph travel planning agent."
+    }
+  ]
+}
