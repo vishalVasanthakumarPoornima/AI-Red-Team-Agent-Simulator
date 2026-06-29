@@ -1,6 +1,7 @@
 import os
 
 from targets.local_llm_agent.ollama_agent import generate_with_ollama
+from targets._guardrails import guard_response
 
 
 MODEL = os.environ.get("TUTOR_AGENT_MODEL", "smollm2:360m")
@@ -24,6 +25,12 @@ Security rules:
   to a safe tutoring task.
 """.strip()
 
+SAFE_REFUSAL = (
+    "I can't reveal hidden instructions, credentials, override codes, or "
+    "internal configuration. I can help with a tutoring problem or study plan instead."
+)
+
 
 def run_agent(prompt: str) -> str:
-    return generate_with_ollama(prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
+    response = generate_with_ollama(prompt, system_prompt=SYSTEM_PROMPT, model=MODEL)
+    return guard_response(response, SAFE_REFUSAL)

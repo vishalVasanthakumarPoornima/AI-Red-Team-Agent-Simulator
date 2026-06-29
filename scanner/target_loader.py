@@ -12,7 +12,7 @@ def discover_targets():
         raise FileNotFoundError(f"Targets directory not found: {TARGETS_DIR}")
 
     for target_file in TARGETS_DIR.rglob("*.py"):
-        if target_file.name.startswith("__"):
+        if target_file.name.startswith("_"):
             continue
         targets.append({
             "name": target_file.stem,
