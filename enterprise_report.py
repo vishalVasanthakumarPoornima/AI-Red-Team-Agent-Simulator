@@ -80,6 +80,16 @@ def _finding_rows(results):
     return sorted(rows, key=lambda row: SEVERITY_RANK.get(row["severity"], 0), reverse=True)
 
 
+def _dynamic_summary(assessment):
+    recon_count = 0
+    generated_count = 0
+    for run in assessment.get("runs", {}).values():
+        recon_count += len(run.get("reconnaissance", []) or [])
+        for generated in (run.get("generated_payloads", {}) or {}).values():
+            generated_count += len(generated.get("payloads", []) or [])
+    return {"reconnaissance": recon_count, "generated_payloads": generated_count}
+
+
 def _remediation_for(finding):
     attack = str(finding.get("attack", "")).lower()
     if "secret" in attack:
@@ -101,6 +111,7 @@ def build_enterprise_report(assessment):
     active_agents = assessment.get("active_agents", [])
     targets = assessment.get("targets", [])
     run_names = list(assessment.get("runs", {}))
+    dynamic_summary = _dynamic_summary(assessment)
 
     lines = [
         "# Enterprise AI Red Team Assessment",
@@ -116,6 +127,8 @@ def build_enterprise_report(assessment):
         f"- Active local services discovered: {len(active_agents)}",
         f"- Repository targets in scope: {len(targets)}",
         f"- Assessment runs executed: {', '.join(run_names) if run_names else 'none'}",
+        f"- Reconnaissance probes completed: {dynamic_summary['reconnaissance']}",
+        f"- Dynamic probes generated: {dynamic_summary['generated_payloads']}",
         "",
     ]
 
@@ -160,7 +173,8 @@ def build_enterprise_report(assessment):
             "## Methodology",
             "",
             "- Static payload scans for prompt disclosure, system prompt disclosure, prompt injection, tool abuse, and secret extraction.",
-            "- Active local service probing through compatible `/health`, `/metadata`, `/targets`, and `/invoke` endpoints when discovered.",
+            "- Active local service reconnaissance through compatible `/health`, `/metadata`, `/targets`, and `/invoke` endpoints when discovered.",
+            "- Reconnaissance-driven dynamic prompt generation based on each agent's role, tools, boundaries, and configured secret names.",
             "- Optional local-model adaptive red-team planning when requested.",
             "- Optional Kali-backed recon and prompt probes when requested.",
             "- Rule-based detector evaluation with evidence capture and severity assignment.",

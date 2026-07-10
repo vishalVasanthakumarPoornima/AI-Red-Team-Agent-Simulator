@@ -48,8 +48,10 @@ class HttpAgentAttackTests(unittest.TestCase):
             report_path = Path(temp_dir) / "http_agent_scan.json"
             report = run_http_agent_attack([agent], timeout=2, report_path=report_path)
 
-        self.assertEqual(report["summary"]["tests"], 3)
-        self.assertEqual(report["summary"]["pass"], 3)
+        self.assertEqual(len(report["reconnaissance"]), 2)
+        self.assertIn("test_agent", report["generated_payloads"])
+        self.assertEqual(report["summary"]["tests"], 6)
+        self.assertEqual(report["summary"]["pass"], 6)
         self.assertEqual(report["summary"]["fail"], 0)
         self.assertEqual(report["summary"]["unparsed"], 0)
 

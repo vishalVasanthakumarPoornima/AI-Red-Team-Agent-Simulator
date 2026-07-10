@@ -102,6 +102,7 @@ Then type requests in plain English, for example:
 find active agents on this machine
 attack active running agents
 attack all local agents and generate an enterprise report
+run a comprehensive dynamic demo assessment with Kali
 run adaptive local red team against travel_agent with 3 payloads
 run the ThinkPad Kali assessment
 full assessment with Kali and enterprise report
@@ -110,7 +111,7 @@ full assessment with Kali and enterprise report
 You can also send one request non-interactively:
 
 ```bash
-./scripts/redteam_chat.sh --message "attack all local agents and generate an enterprise report"
+./scripts/redteam_chat.sh --message "run a comprehensive dynamic demo assessment with Kali"
 ```
 
 The assistant uses deterministic intent parsing by default. If you want local

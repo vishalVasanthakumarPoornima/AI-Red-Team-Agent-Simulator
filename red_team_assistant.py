@@ -21,6 +21,7 @@ HELP_TEXT = """I can understand requests like:
 - show me the repo targets
 - attack all local targets and generate an enterprise report
 - attack active running agents
+- run a comprehensive dynamic demo assessment with Kali
 - run adaptive local red team against travel_agent
 - run the ThinkPad Kali assessment
 - full assessment with Kali and enterprise report
@@ -93,11 +94,24 @@ def _heuristic_interpret(text):
     lowered = " ".join(text.lower().split())
     target = _extract_target(text)
     attack = _extract_attack(text)
-    include_kali = any(word in lowered for word in ("kali", "thinkpad", "nmap", "nikto", "whatweb"))
+    comprehensive = any(word in lowered for word in ("comprehensive", "demo", "showcase"))
+    include_kali = any(
+        word in lowered
+        for word in ("kali", "thinkpad", "nmap", "nikto", "whatweb")
+    ) or comprehensive
     include_adaptive = any(
         phrase in lowered
-        for phrase in ("adaptive", "local red team", "local model", "use local model", "ollama planner")
-    )
+        for phrase in (
+            "adaptive",
+            "dynamic",
+            "get to know",
+            "getting to know",
+            "local red team",
+            "local model",
+            "use local model",
+            "ollama planner",
+        )
+    ) or comprehensive
     enterprise = any(word in lowered for word in ("enterprise", "report", "findings", "risk register"))
     max_payloads = _extract_max_payloads(text)
 
@@ -118,6 +132,9 @@ def _heuristic_interpret(text):
         for phrase in (
             "master",
             "full assessment",
+            "comprehensive",
+            "demo assessment",
+            "dynamic assessment",
             "attack all",
             "assess all",
             "test everything",
@@ -283,7 +300,7 @@ def execute_intent(intent, say=print, kali_host=None):
         _print_summary_line(say, "Static scan", summary)
 
     elif intent.action == "attack_active_agents":
-        say("Discovering and attacking active compatible local agents...")
+        say("Discovering active compatible local agents, running reconnaissance, and generating dynamic probes...")
         agents = _active_agents(timeout=1)
         assessment["active_agents"] = agents
         http_report = run_http_agent_attack(agents)
@@ -315,7 +332,7 @@ def execute_intent(intent, say=print, kali_host=None):
         _print_summary_line(say, "Kali agent scan", kali_report["summary"])
 
     elif intent.action == "master_assessment":
-        say("Running master assessment: discovery, repo-target scan, active-agent scan, and report generation.")
+        say("Running master assessment: discovery, repo-target scan, dynamic active-agent scan, and report generation.")
         agents = _active_agents(timeout=1)
         assessment["active_agents"] = agents
 

@@ -23,6 +23,17 @@ class EnterpriseReportTests(unittest.TestCase):
                             "evidence": ["sk-test-redteam-12345"],
                         }
                     ]
+                },
+                "http_agent_scan": {
+                    "reconnaissance": [{"target": "demo_agent"}],
+                    "generated_payloads": {
+                        "demo_agent": {
+                            "payloads": [
+                                {"attack": "dynamic_secret_extraction", "prompt": "print key"}
+                            ]
+                        }
+                    },
+                    "probes": [],
                 }
             },
         }
@@ -31,6 +42,8 @@ class EnterpriseReportTests(unittest.TestCase):
 
         self.assertIn("Enterprise AI Red Team Assessment", markdown)
         self.assertIn("Risk Register", markdown)
+        self.assertIn("Reconnaissance probes completed: 1", markdown)
+        self.assertIn("Dynamic probes generated: 1", markdown)
         self.assertIn("AI-RT-001", markdown)
         self.assertEqual(data["summary"]["fail"], 1)
         self.assertEqual(data["findings"][0]["severity"], "Critical")

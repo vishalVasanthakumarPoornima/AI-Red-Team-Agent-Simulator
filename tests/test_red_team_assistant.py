@@ -41,6 +41,14 @@ class RedTeamAssistantIntentTests(unittest.TestCase):
         self.assertTrue(intent.include_kali)
         self.assertTrue(intent.enterprise_report)
 
+    def test_comprehensive_demo_enables_dynamic_adaptive_and_kali_paths(self):
+        intent = interpret_request("run a comprehensive dynamic demo assessment")
+
+        self.assertEqual(intent.action, "master_assessment")
+        self.assertTrue(intent.include_kali)
+        self.assertTrue(intent.include_adaptive)
+        self.assertTrue(intent.enterprise_report)
+
 
 if __name__ == "__main__":
     unittest.main()
