@@ -15,6 +15,12 @@ class RedTeamAssistantIntentTests(unittest.TestCase):
         self.assertEqual(intent.action, "master_assessment")
         self.assertTrue(intent.enterprise_report)
 
+    def test_attack_active_running_agents_is_not_discovery_only(self):
+        intent = interpret_request("attack active running agents and generate an enterprise report")
+
+        self.assertEqual(intent.action, "attack_active_agents")
+        self.assertTrue(intent.enterprise_report)
+
     def test_adaptive_request_extracts_target_and_payload_count(self):
         intent = interpret_request("run adaptive local red team against travel_agent with 3 payloads")
 

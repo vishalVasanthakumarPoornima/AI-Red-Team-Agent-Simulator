@@ -107,12 +107,12 @@ def _heuristic_interpret(text):
         action = "help"
     elif "target" in lowered and not any(word in lowered for word in ("attack", "scan", "test")):
         action = "list_targets"
-    elif any(phrase in lowered for phrase in ("find active", "discover active", "running agents", "same machine")):
-        action = "discover_agents"
     elif any(phrase in lowered for phrase in ("active agents", "running agents", "http agents")) and any(
         word in lowered for word in ("attack", "assess", "scan", "test")
     ):
         action = "attack_active_agents"
+    elif any(phrase in lowered for phrase in ("find active", "discover active", "running agents", "same machine")):
+        action = "discover_agents"
     elif any(
         phrase in lowered
         for phrase in (
