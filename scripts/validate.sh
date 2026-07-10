@@ -21,8 +21,11 @@ echo "Syntax/import compilation:"
   agent_lab_server.py \
   agent_registry.py \
   agent_service.py \
+  enterprise_report.py \
+  http_agent_attack.py \
   kali_agent_attack.py \
   kali_url_attack.py \
+  red_team_assistant.py \
   scanner \
   targets \
   functional_agents \

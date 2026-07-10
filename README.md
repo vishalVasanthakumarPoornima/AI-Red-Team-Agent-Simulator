@@ -88,6 +88,44 @@ python3 ai_red_team_cli.py kali attack-agents --ollama-model llama3.2:1b --ollam
 python3 ai_red_team_cli.py kali attack-url --url https://your-agent.onrender.com
 ```
 
+## Natural-Language Assistant
+
+Start the conversational assistant:
+
+```bash
+./scripts/redteam_chat.sh
+```
+
+Then type requests in plain English, for example:
+
+```text
+find active agents on this machine
+attack active running agents
+attack all local agents and generate an enterprise report
+run adaptive local red team against travel_agent with 3 payloads
+run the ThinkPad Kali assessment
+full assessment with Kali and enterprise report
+```
+
+You can also send one request non-interactively:
+
+```bash
+./scripts/redteam_chat.sh --message "attack all local agents and generate an enterprise report"
+```
+
+The assistant uses deterministic intent parsing by default. If you want local
+Ollama-assisted intent parsing, set `REDTEAM_NL_MODEL` and pass `--local-model`:
+
+```bash
+export REDTEAM_NL_MODEL=llama3.2:1b
+./scripts/redteam_chat.sh --local-model
+```
+
+Enterprise reports are written to:
+
+- `reports/enterprise_red_team_report.md`
+- `reports/enterprise_red_team_report.json`
+
 Run the local validation gate before pushing changes:
 
 ```bash

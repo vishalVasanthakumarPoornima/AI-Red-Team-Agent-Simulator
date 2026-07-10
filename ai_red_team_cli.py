@@ -262,6 +262,17 @@ def cmd_kali_attack_url(args):
     return 0
 
 
+def cmd_chat(args):
+    from red_team_assistant import run_chat
+
+    run_chat(
+        message=args.message,
+        prefer_local_model=args.local_model,
+        kali_host=args.kali_host,
+    )
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="ai-red-team",
@@ -282,6 +293,27 @@ def build_parser():
         help="Exit 1 when the scan records FAIL or ERROR results.",
     )
     scan_parser.set_defaults(func=cmd_scan)
+
+    chat_parser = subparsers.add_parser(
+        "chat",
+        help="Talk to the red-team assistant in natural language.",
+    )
+    chat_parser.add_argument(
+        "--message",
+        "-m",
+        help="Run one natural-language request instead of opening interactive chat.",
+    )
+    chat_parser.add_argument(
+        "--local-model",
+        action="store_true",
+        help="Use REDTEAM_NL_MODEL through local Ollama for intent parsing when available.",
+    )
+    chat_parser.add_argument(
+        "--kali-host",
+        default=DEFAULT_KALI_HOST,
+        help=f"Kali SSH host for natural-language Kali requests. Default: {DEFAULT_KALI_HOST}",
+    )
+    chat_parser.set_defaults(func=cmd_chat)
 
     local_parser = subparsers.add_parser(
         "local-red-team",
