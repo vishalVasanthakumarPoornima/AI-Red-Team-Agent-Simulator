@@ -191,6 +191,32 @@ def cmd_agents_health(args):
     return 0
 
 
+def cmd_agents_discover(args):
+    from agent_registry import discover_local_agents, local_discovery_ports
+
+    ports = local_discovery_ports(args.ports, registry_path=args.registry)
+    agents = discover_local_agents(args.host, ports=ports, timeout=args.timeout)
+    if args.json:
+        print(json.dumps(agents, indent=2))
+        return 0
+    if not agents:
+        print(f"No active local agents found on {args.host}.")
+        return 1 if args.fail_on_none else 0
+
+    name_width = max(len("Agent"), *(len(str(agent.get("name", ""))) for agent in agents))
+    kind_width = max(len("Kind"), *(len(str(agent.get("kind", ""))) for agent in agents))
+    print(f"{'Agent'.ljust(name_width)}  {'Kind'.ljust(kind_width)}  Base URL  Targets")
+    print(f"{'-' * name_width}  {'-' * kind_width}  {'-' * 8}  {'-' * 7}")
+    for agent in agents:
+        targets = ", ".join(agent.get("targets") or [])
+        print(
+            f"{str(agent.get('name', '')).ljust(name_width)}  "
+            f"{str(agent.get('kind', '')).ljust(kind_width)}  "
+            f"{agent.get('base_url', '')}  {targets}"
+        )
+    return 0
+
+
 def resolve_identity_file(value=None):
     identity_file = value or os.environ.get("KALI_SSH_KEY")
     if identity_file is None and os.path.exists(os.path.expanduser(DEFAULT_KALI_KEY)):
@@ -313,6 +339,21 @@ def build_parser():
     agents_health_parser.add_argument("--json", action="store_true")
     agents_health_parser.add_argument("--fail-on-down", action="store_true")
     agents_health_parser.set_defaults(func=cmd_agents_health)
+
+    agents_discover_parser = agents_subparsers.add_parser(
+        "discover",
+        help="Actively scan localhost for running compatible agent services.",
+    )
+    agents_discover_parser.add_argument("--host", default="127.0.0.1")
+    agents_discover_parser.add_argument(
+        "--ports",
+        help="Comma-separated ports and ranges, for example: 18080,18101-18110.",
+    )
+    agents_discover_parser.add_argument("--registry", default="agent_registry.json")
+    agents_discover_parser.add_argument("--timeout", type=float, default=0.35)
+    agents_discover_parser.add_argument("--json", action="store_true")
+    agents_discover_parser.add_argument("--fail-on-none", action="store_true")
+    agents_discover_parser.set_defaults(func=cmd_agents_discover)
 
     kali_parser = subparsers.add_parser("kali", help="Interact with the connected Kali lab host.")
     kali_subparsers = kali_parser.add_subparsers(dest="kali_command", required=True)

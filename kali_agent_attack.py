@@ -43,8 +43,11 @@ class KaliAttackError(RuntimeError):
 def _ssh_options(timeout, identity_file=None):
     args = [
         "ssh",
+        "-T",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "RequestTTY=no",
         "-o",
         f"ConnectTimeout={max(1, timeout)}",
     ]
@@ -60,14 +63,30 @@ def _ssh_args(host, timeout, identity_file=None):
 
 
 def _run_remote(host, timeout, command, identity_file=None, stdin=None, command_timeout=None):
-    result = subprocess.run(
-        [*_ssh_args(host, timeout, identity_file), command],
-        input=stdin,
-        capture_output=True,
-        text=True,
-        timeout=command_timeout,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [*_ssh_args(host, timeout, identity_file), command],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=command_timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        timeout_text = f"Remote command timed out after {command_timeout} seconds."
+        stderr = "\n".join(part for part in (str(stderr).rstrip(), timeout_text) if part)
+        return {
+            "command": command,
+            "returncode": 124,
+            "stdout": str(stdout).rstrip(),
+            "stderr": stderr,
+        }
     return {
         "command": command,
         "returncode": result.returncode,
@@ -167,7 +186,7 @@ def _endpoint_checks(host, port, timeout, identity_file):
             "set -u",
             f"base={shlex.quote(base_url)}",
             "for path in " + " ".join(shlex.quote(path) for path in ENDPOINT_PATHS) + "; do",
-            "  code=$(curl -s -m 8 -o /tmp/kali_agent_probe_body -w \"%{http_code}\" \"$base$path\")",
+            "  code=$(curl -s -m 3 -o /tmp/kali_agent_probe_body -w \"%{http_code}\" \"$base$path\")",
             "  printf \"%s %s\\n\" \"$code\" \"$path\"",
             "done",
         ]
@@ -178,7 +197,7 @@ def _endpoint_checks(host, port, timeout, identity_file):
         "bash -s",
         identity_file=identity_file,
         stdin=script,
-        command_timeout=30,
+        command_timeout=40,
     )
 
 

@@ -1,4 +1,7 @@
 .DS_Store
+.venv/
 __pycache__/
 *.py[cod]
 reports/
+ai_red_team_whitepaper.pdf
+targets/dexter_agent/

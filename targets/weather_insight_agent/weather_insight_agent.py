@@ -2,6 +2,7 @@ from functional_agents.graphs import GraphDependencyError, run_weather_agent
 
 
 AGENT_NAME = "Weather Insight Agent"
+REDTEAM_TARGET = True
 
 
 def run_agent(prompt: str) -> str:

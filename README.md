@@ -15,9 +15,10 @@ third-party systems, real credentials, or production environments.
 
 ## Current Scanner
 
-The scanner discovers Python targets under `targets/`, imports each target, and
-calls `run_agent(prompt)` when available. Attack payloads are loaded from text
-files under `attacks/`.
+The scanner discovers explicit Python targets under `targets/`, imports each
+target, and calls `run_agent(prompt)` when available. A target module must set
+`REDTEAM_TARGET = True`; this keeps local scratch or placeholder modules out of
+normal scans. Attack payloads are loaded from text files under `attacks/`.
 
 Default attack payloads:
 
@@ -32,6 +33,14 @@ Reports are written to:
 
 ## Ollama Setup
 
+Use Python 3.13 for local development. The bootstrap script creates `.venv/`
+and installs the functional-agent dependencies:
+
+```bash
+./scripts/bootstrap_dev.sh
+source .venv/bin/activate
+```
+
 Start Ollama:
 
 ```bash
@@ -41,21 +50,25 @@ ollama serve
 Pull the default local model:
 
 ```bash
-ollama pull llama3.2:3b
+ollama pull llama3.2:1b
 ```
 
 The Ollama target uses:
 
 - URL: `http://localhost:11434/api/generate`
-- Default model: `llama3.2:3b`
+- Default model: `llama3.2:1b`
 - `stream: false`
 - `temperature: 0.2`
 
 Override the model if needed:
 
 ```bash
-export OLLAMA_MODEL=llama3.2:3b
+export OLLAMA_MODEL=llama3.2:1b
 ```
+
+For a service deployment that talks to a separate Ollama-compatible endpoint,
+set `OLLAMA_URL` to the full `/api/generate` URL. If `OLLAMA_URL` is not set,
+the agents use the local Ollama server above.
 
 ## Run The Scanner
 
@@ -68,10 +81,23 @@ python3 ai_red_team_cli.py scan --target tool_agent --attack prompt_disclosure
 python3 ai_red_team_cli.py local-red-team --target travel_agent --max-payloads 2
 python3 ai_red_team_cli.py serve-agents --target ollama_agent --target travel_agent --target tutor_agent
 python3 ai_red_team_cli.py serve-agent --target weather_insight_agent --port 18101
+python3 ai_red_team_cli.py agents discover
 python3 ai_red_team_cli.py agents health
 python3 ai_red_team_cli.py kali status
 python3 ai_red_team_cli.py kali attack-agents --ollama-model llama3.2:1b --ollama-timeout 180
 python3 ai_red_team_cli.py kali attack-url --url https://your-agent.onrender.com
+```
+
+Run the local validation gate before pushing changes:
+
+```bash
+./scripts/validate.sh
+```
+
+To include a local HTTP service health check in that gate:
+
+```bash
+RUN_SERVICE_SMOKE=1 ./scripts/validate.sh
 ```
 
 The Kali command expects an SSH alias named `kali-redteam`. You can also pass a
@@ -90,6 +116,10 @@ The URL attack command runs Kali recon and prompt-level probes directly against
 an authorized hosted agent URL. Use it only against services you own or have
 explicit permission to test.
 
+The Render blueprint in `render.yaml` requires an Ollama-compatible model
+endpoint through `OLLAMA_URL`; a default Render Python web service does not run
+Ollama inside the same process.
+
 ## Functional Agent Services
 
 The project includes Ollama + LangGraph target agents that can run as local
@@ -102,14 +132,14 @@ HTTP services or be deployed as Render web services:
 Install the functional-agent dependency:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Run local services:
 
 ```bash
-python3 agent_service.py --target weather_insight_agent --port 18101
-python3 agent_service.py --target travel_planner_agent --port 18102
+python agent_service.py --target weather_insight_agent --port 18101
+python agent_service.py --target travel_planner_agent --port 18102
 ```
 
 Check registered service health:
@@ -117,6 +147,19 @@ Check registered service health:
 ```bash
 python3 ai_red_team_cli.py agents list
 python3 ai_red_team_cli.py agents health
+```
+
+Find compatible agent services that are actively running on the same machine:
+
+```bash
+python3 ai_red_team_cli.py agents discover
+python3 ai_red_team_cli.py agents discover --ports 18080,18101-18110
+```
+
+Start both registered local services and verify `/health` plus `/metadata`:
+
+```bash
+./scripts/service_smoke.sh
 ```
 
 Invoke one service directly:

@@ -35,12 +35,19 @@ def _endpoint_checks(host, timeout, identity_file, url):
             "set -u",
             f"base={shlex.quote(base)}",
             "for path in " + " ".join(shlex.quote(path) for path in ENDPOINT_PATHS) + "; do",
-            "  code=$(curl -s -m 12 -o /tmp/kali_url_probe_body -w \"%{http_code}\" \"$base$path\")",
+            "  code=$(curl -s -m 5 -o /tmp/kali_url_probe_body -w \"%{http_code}\" \"$base$path\")",
             "  printf \"%s %s\\n\" \"$code\" \"$path\"",
             "done",
         ]
     )
-    return _run_remote(host, timeout, "bash -s", identity_file=identity_file, stdin=script)
+    return _run_remote(
+        host,
+        timeout,
+        "bash -s",
+        identity_file=identity_file,
+        stdin=script,
+        command_timeout=50,
+    )
 
 
 def _web_recon(host, timeout, identity_file, url):

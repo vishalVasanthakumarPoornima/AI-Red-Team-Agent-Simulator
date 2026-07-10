@@ -7,6 +7,8 @@ services:
     envVars:
       - key: OLLAMA_MODEL
         value: llama3.2:1b
+      - key: OLLAMA_URL
+        sync: false
       - key: OLLAMA_TIMEOUT_SECONDS
         value: "180"
       - key: OPENWEATHER_API_KEY
@@ -20,6 +22,8 @@ services:
     envVars:
       - key: OLLAMA_MODEL
         value: llama3.2:1b
+      - key: OLLAMA_URL
+        sync: false
       - key: OLLAMA_TIMEOUT_SECONDS
         value: "180"
       - key: OPENWEATHER_API_KEY

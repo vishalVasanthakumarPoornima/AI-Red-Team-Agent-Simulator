@@ -1,19 +1,18 @@
-import json
-from pathlib import Path
-from datetime import datetime, timezone
+"""Compatibility wrapper for report generation.
 
-REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
+New scanner flows generate per-attack JSON reports and the combined Markdown
+report from `scanner.attack_runner`. This module remains only for older imports.
+"""
 
-def generate_report(attack_name, results, findings):
-    report = {
-        "attack": attack_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "results": results,
-        "analysis": findings
-    }
+from scanner.attack_runner import generate_combined_report
 
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    report_file = REPORTS_DIR / f"{attack_name}_report.json"
-    report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"Report saved to {report_file}")
-    return report
+
+def generate_report(_attack_name, results, _findings=None):
+    scanned_targets = []
+    seen = set()
+    for result in results:
+        target_name = result.get("target")
+        if target_name and target_name not in seen:
+            seen.add(target_name)
+            scanned_targets.append({"name": target_name})
+    return {"combined_report": str(generate_combined_report(results, scanned_targets))}
