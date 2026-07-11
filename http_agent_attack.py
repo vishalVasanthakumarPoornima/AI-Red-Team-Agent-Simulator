@@ -9,7 +9,7 @@ import urllib.request
 
 from kali_agent_attack import DEFAULT_PROBES
 from scanner.attack_runner import REPORTS_DIR, status_counts
-from scanner.detectors import evaluate_response
+from scanner.detectors import evaluate_response, redact_configured_secrets
 
 
 DEFAULT_REPORT_PATH = REPORTS_DIR / "http_agent_scan.json"
@@ -32,6 +32,21 @@ def _configured_secret_names():
         if any(marker in name.upper() for marker in markers) and len(str(value or "")) >= 8:
             names.append(name)
     return sorted(names)
+
+
+def _redact_value(value):
+    if isinstance(value, str):
+        return redact_configured_secrets(value)
+    if isinstance(value, dict):
+        return {str(key): _redact_value(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_value(inner) for inner in value]
+    return value
+
+
+def _monitor_event(monitor, phase, action, status="info", details=None):
+    if monitor is not None:
+        monitor.event(phase, action, status=status, details=details or {})
 
 
 def _post_json(url, payload, timeout):
@@ -86,15 +101,16 @@ def _normalize_http_response(agent, target_name, attack, prompt, http_result):
             parse_error = str(exc)
 
     if isinstance(parsed, dict) and "status" in parsed:
-        result = parsed
+        result = _redact_value(parsed)
     elif isinstance(parsed, dict) and "response" in parsed:
+        response_text = str(parsed["response"])
         result = {
             "target": target_name,
             "attack": attack,
             "prompt": prompt,
-            "response": parsed["response"],
+            "response": redact_configured_secrets(response_text),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            **evaluate_response(prompt, parsed["response"], attack),
+            **evaluate_response(prompt, response_text, attack),
         }
     elif parsed is not None and parse_error is None:
         parse_error = "JSON response did not contain status or response."
@@ -105,8 +121,8 @@ def _normalize_http_response(agent, target_name, attack, prompt, http_result):
         "target": target_name,
         "attack": attack,
         "prompt": prompt,
-        "http": http_result,
-        "raw_response": parsed,
+        "http": _redact_value(http_result),
+        "raw_response": _redact_value(parsed),
         "result": result,
         "parse_error": parse_error,
     }
@@ -200,12 +216,43 @@ def _summarize(probes):
     }
 
 
-def _run_probe(agent, target_name, attack, prompt, timeout, requires_target):
+def _run_probe(agent, target_name, attack, prompt, timeout, requires_target, monitor=None, phase="http_probe"):
     payload = {"attack": attack, "prompt": prompt}
     if requires_target:
         payload["target"] = target_name
+    _monitor_event(
+        monitor,
+        phase,
+        "probe_started",
+        status="running",
+        details={
+            "agent": agent.get("name"),
+            "target": target_name,
+            "attack": attack,
+            "url": agent.get("invoke_url"),
+            "prompt": prompt,
+        },
+    )
     http_result = _post_json(agent["invoke_url"], payload, timeout)
-    return _normalize_http_response(agent, target_name, attack, prompt, http_result)
+    probe = _normalize_http_response(agent, target_name, attack, prompt, http_result)
+    result = probe.get("result") or {}
+    _monitor_event(
+        monitor,
+        phase,
+        "probe_completed",
+        status="ok" if not probe.get("parse_error") else "error",
+        details={
+            "agent": agent.get("name"),
+            "target": target_name,
+            "attack": attack,
+            "http_status": probe.get("http", {}).get("http_status"),
+            "returncode": probe.get("http", {}).get("returncode"),
+            "result_status": result.get("status"),
+            "severity": result.get("severity"),
+            "parse_error": probe.get("parse_error"),
+        },
+    )
+    return probe
 
 
 def run_http_agent_attack(
@@ -214,6 +261,7 @@ def run_http_agent_attack(
     report_path=DEFAULT_REPORT_PATH,
     include_static=True,
     include_dynamic=True,
+    monitor=None,
 ):
     probes = []
     reconnaissance = []
@@ -227,10 +275,32 @@ def run_http_agent_attack(
         targets = _agent_targets(agent)
         requires_target = bool(agent.get("targets"))
         for target_name in targets:
+            _monitor_event(
+                monitor,
+                "http_agent_scan",
+                "target_started",
+                status="running",
+                details={
+                    "agent": agent.get("name"),
+                    "kind": agent.get("kind"),
+                    "target": target_name,
+                    "invoke_url": invoke_url,
+                    "requires_target": requires_target,
+                },
+            )
             target_recon = []
             if include_dynamic:
                 for attack, prompt in RECON_PROMPTS:
-                    recon_probe = _run_probe(agent, target_name, attack, prompt, timeout, requires_target)
+                    recon_probe = _run_probe(
+                        agent,
+                        target_name,
+                        attack,
+                        prompt,
+                        timeout,
+                        requires_target,
+                        monitor=monitor,
+                        phase="http_recon",
+                    )
                     reconnaissance.append(recon_probe)
                     target_recon.append(recon_probe)
 
@@ -247,6 +317,20 @@ def run_http_agent_attack(
                         for attack, prompt in dynamic_probes
                     ],
                 }
+                _monitor_event(
+                    monitor,
+                    "dynamic_generation",
+                    "payloads_generated",
+                    status="ok",
+                    details={
+                        "agent": agent.get("name"),
+                        "target": target_name,
+                        "generator": "recon_context_dynamic_templates",
+                        "payload_count": len(dynamic_probes),
+                        "attacks": [attack for attack, _ in dynamic_probes],
+                        "context_excerpt": context[:500],
+                    },
+                )
 
             selected_probes = []
             if include_static:
@@ -254,7 +338,29 @@ def run_http_agent_attack(
             selected_probes.extend(dynamic_probes)
 
             for attack, prompt in selected_probes:
-                probes.append(_run_probe(agent, target_name, attack, prompt, timeout, requires_target))
+                probes.append(
+                    _run_probe(
+                        agent,
+                        target_name,
+                        attack,
+                        prompt,
+                        timeout,
+                        requires_target,
+                        monitor=monitor,
+                    )
+                )
+            _monitor_event(
+                monitor,
+                "http_agent_scan",
+                "target_completed",
+                status="ok",
+                details={
+                    "agent": agent.get("name"),
+                    "target": target_name,
+                    "recon_probes": len(target_recon),
+                    "attack_probes": len(selected_probes),
+                },
+            )
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

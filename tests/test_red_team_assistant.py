@@ -34,6 +34,13 @@ class RedTeamAssistantIntentTests(unittest.TestCase):
         self.assertEqual(intent.action, "kali_attack")
         self.assertTrue(intent.include_kali)
 
+    def test_kali_enterprise_report_request_stays_kali_only(self):
+        intent = interpret_request("run the ThinkPad Kali assessment and generate an enterprise report")
+
+        self.assertEqual(intent.action, "kali_attack")
+        self.assertTrue(intent.include_kali)
+        self.assertTrue(intent.enterprise_report)
+
     def test_full_assessment_with_kali_uses_master_pipeline(self):
         intent = interpret_request("full assessment with Kali and enterprise report")
 

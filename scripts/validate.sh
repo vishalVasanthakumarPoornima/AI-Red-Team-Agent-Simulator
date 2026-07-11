@@ -17,6 +17,7 @@ echo "Unit tests:"
 echo
 echo "Syntax/import compilation:"
 "${PYTHON_BIN}" -m compileall \
+  assessment_monitor.py \
   ai_red_team_cli.py \
   agent_lab_server.py \
   agent_registry.py \

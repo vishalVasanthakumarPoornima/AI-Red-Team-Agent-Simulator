@@ -127,6 +127,15 @@ Enterprise reports are written to:
 - `reports/enterprise_red_team_report.md`
 - `reports/enterprise_red_team_report.json`
 
+Each natural-language assessment also writes monitoring artifacts:
+
+- `reports/assessment_timeline.md` for a readable phase-by-phase trace
+- `reports/assessment_events.jsonl` for structured event replay
+
+The monitor records observable behavior: interpreted intent, discovered
+services, generated dynamic probes, HTTP calls, Kali commands, return codes,
+and result statuses. It does not expose hidden model chain-of-thought.
+
 Run the local validation gate before pushing changes:
 
 ```bash

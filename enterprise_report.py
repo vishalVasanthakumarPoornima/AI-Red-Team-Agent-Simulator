@@ -3,8 +3,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import re
 
 from scanner.attack_runner import REPORTS_DIR, fenced_text, status_counts, truncate_text
+from scanner.detectors import redact_configured_secrets
 
 
 DEFAULT_REPORT_PATH = REPORTS_DIR / "enterprise_red_team_report.md"
@@ -17,6 +19,7 @@ SEVERITY_RANK = {
     "Critical": 4,
     "Error": 3,
 }
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _iter_results(assessment):
@@ -90,7 +93,32 @@ def _dynamic_summary(assessment):
     return {"reconnaissance": recon_count, "generated_payloads": generated_count}
 
 
+def _escape_table(value):
+    return str(value or "").replace("|", "\\|").replace("\n", " ")
+
+
+def _safe_excerpt(value, limit=240):
+    text = ANSI_ESCAPE_RE.sub("", redact_configured_secrets(value))
+    return truncate_text(text, limit=limit)
+
+
+def _tool_status(returncode):
+    if returncode is None:
+        return "unknown"
+    return "ok" if returncode == 0 else "error"
+
+
 def _remediation_for(finding):
+    reason = str(finding.get("reason", "")).lower()
+    if finding.get("status") == "ERROR" and (
+        "timeout" in reason or "timed out" in reason or "exited 28" in reason or "exit 28" in reason
+    ):
+        return (
+            "Treat this as a coverage gap: check Ollama/model health, increase the configured timeout "
+            "only if needed, and rerun the affected probe."
+        )
+    if finding.get("status") == "ERROR":
+        return "Fix service reliability or parser compatibility so failures cannot hide security findings."
     attack = str(finding.get("attack", "")).lower()
     if "secret" in attack:
         return "Move secrets out of prompts and tools, enforce secret redaction, and add output filtering tests."
@@ -98,9 +126,236 @@ def _remediation_for(finding):
         return "Strengthen prompt isolation, refuse hidden-instruction disclosure, and regression-test known bypass prompts."
     if "tool" in attack:
         return "Add tool authorization checks, dry-run guards, scoped permissions, and audit logs before tool execution."
-    if finding.get("status") == "ERROR":
-        return "Fix service reliability or parser compatibility so failures cannot hide security findings."
     return "Review the affected agent policy, add a targeted guardrail, and rerun the red-team suite."
+
+
+def _observability_lines(assessment):
+    monitoring = assessment.get("monitoring") or {}
+    lines = [
+        "## Assessment Observability",
+        "",
+        "- Observable trace coverage: interpreted intent, service discovery, generated probes, HTTP calls, Kali commands, return codes, and result statuses.",
+        "- Thought visibility: this report records observable planning and tool use, not hidden model chain-of-thought.",
+    ]
+    if monitoring:
+        if monitoring.get("timeline_markdown"):
+            lines.append(f"- Timeline: `{monitoring['timeline_markdown']}`")
+        if monitoring.get("events_jsonl"):
+            lines.append(f"- Event stream: `{monitoring['events_jsonl']}`")
+        if monitoring.get("events_recorded") is not None:
+            lines.append(f"- Events recorded: {monitoring['events_recorded']}")
+    else:
+        lines.append("- No assessment monitor artifact was attached to this assessment.")
+    lines.append("")
+    return lines
+
+
+def _kali_scope_lines(assessment):
+    lines = ["", "### Kali Lab Assessment", ""]
+    found = False
+    for run_name, run in assessment.get("runs", {}).items():
+        if run_name != "kali_agent_scan":
+            continue
+        found = True
+        lines.append(f"- Kali host: `{run.get('kali_host', 'unknown')}`")
+        lines.append(f"- Base URL from Kali: `{run.get('base_url_on_kali', 'unknown')}`")
+        targets = ", ".join(f"`{target}`" for target in run.get("targets", []) or [])
+        lines.append(f"- Exposed lab targets: {targets or 'none'}")
+    if not found:
+        lines.append("- No Kali-backed assessment run was included.")
+    return lines
+
+
+def _dynamic_generation_lines(assessment):
+    lines = ["## Dynamic Probe Generation", ""]
+    found = False
+    for run_name, run in assessment.get("runs", {}).items():
+        generated_payloads = run.get("generated_payloads") or {}
+        for target_name, generated in generated_payloads.items():
+            found = True
+            lines.extend(
+                [
+                    f"### {target_name}",
+                    "",
+                    f"- Run: `{run_name}`",
+                    f"- Generator: `{generated.get('generator', 'unknown')}`",
+                    f"- Source agent: `{generated.get('agent', 'unknown')}`",
+                    f"- Context excerpt: {_safe_excerpt(generated.get('context_excerpt', ''), limit=300)}",
+                    "",
+                    "| Attack | Prompt excerpt |",
+                    "| --- | --- |",
+                ]
+            )
+            for payload in generated.get("payloads", []):
+                lines.append(
+                    f"| {_escape_table(payload.get('attack'))} | "
+                    f"{_escape_table(_safe_excerpt(payload.get('prompt'), limit=260))} |"
+                )
+            lines.append("")
+    if not found:
+        lines.append("No dynamic probes were generated in this assessment.")
+        lines.append("")
+    return lines
+
+
+def _http_trace_lines(run_name, run):
+    lines = [f"### {run_name}", ""]
+    probes = []
+    for probe in run.get("reconnaissance", []) or []:
+        probes.append(("recon", probe))
+    for probe in run.get("probes", []) or []:
+        probes.append(("attack", probe))
+
+    if not probes:
+        lines.append("No HTTP probes were recorded.")
+        lines.append("")
+        return lines
+
+    lines.extend(
+        [
+            "| Type | Agent | Target | Attack | HTTP | Result | Notes |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    row_limit = 40
+    for probe_type, probe in probes[:row_limit]:
+        result = probe.get("result") or {}
+        http = probe.get("http") or {}
+        http_status = http.get("http_status") or "n/a"
+        result_status = result.get("status") or ("ERROR" if probe.get("parse_error") else "UNPARSED")
+        notes = probe.get("parse_error") or result.get("reason") or ""
+        lines.append(
+            f"| {probe_type} | {_escape_table(probe.get('agent'))} | "
+            f"{_escape_table(probe.get('target'))} | {_escape_table(probe.get('attack'))} | "
+            f"{_escape_table(http_status)} | {_escape_table(result_status)} | "
+            f"{_escape_table(_safe_excerpt(notes, limit=180))} |"
+        )
+    if len(probes) > row_limit:
+        lines.append(f"| ... | ... | ... | ... | ... | ... | {len(probes) - row_limit} additional probes omitted from this table. |")
+    lines.append("")
+    return lines
+
+
+def _kali_trace_lines(run_name, run):
+    lines = [f"### {run_name}", ""]
+    has_rows = False
+    web_recon = run.get("web_recon") or {}
+    if web_recon:
+        has_rows = True
+        lines.extend(
+            [
+                "| Tool | Command | Return Code | Status | Output excerpt |",
+                "| --- | --- | ---: | --- | --- |",
+            ]
+        )
+        for tool_name, result in web_recon.items():
+            returncode = result.get("returncode")
+            output = result.get("stdout") or result.get("stderr") or ""
+            lines.append(
+                f"| {_escape_table(tool_name)} | `{_escape_table(_safe_excerpt(result.get('command'), limit=180))}` | "
+                f"{returncode} | {_tool_status(returncode)} | "
+                f"{_escape_table(_safe_excerpt(output, limit=220))} |"
+            )
+        lines.append("")
+
+    endpoint_checks = run.get("endpoint_checks")
+    if endpoint_checks:
+        has_rows = True
+        returncode = endpoint_checks.get("returncode")
+        lines.extend(
+            [
+                "| Tool | Command | Return Code | Status | Output excerpt |",
+                "| --- | --- | ---: | --- | --- |",
+                (
+                    f"| curl endpoint sweep | `{_escape_table(_safe_excerpt(endpoint_checks.get('command'), limit=180))}` | "
+                    f"{returncode} | {_tool_status(returncode)} | "
+                    f"{_escape_table(_safe_excerpt(endpoint_checks.get('stdout') or endpoint_checks.get('stderr'), limit=260))} |"
+                ),
+                "",
+            ]
+        )
+
+    probes = run.get("probes") or []
+    if probes:
+        has_rows = True
+        lines.extend(
+            [
+                "| Target | Attack | Remote Return Code | Result | Notes |",
+                "| --- | --- | ---: | --- | --- |",
+            ]
+        )
+        for probe in probes[:40]:
+            result = probe.get("result") or {}
+            remote = probe.get("remote") or {}
+            notes = probe.get("parse_error") or result.get("reason") or ""
+            lines.append(
+                f"| {_escape_table(probe.get('target'))} | {_escape_table(probe.get('attack'))} | "
+                f"{remote.get('returncode')} | {_escape_table(result.get('status') or 'UNPARSED')} | "
+                f"{_escape_table(_safe_excerpt(notes, limit=180))} |"
+            )
+        if len(probes) > 40:
+            lines.append(f"| ... | ... | ... | ... | {len(probes) - 40} additional probes omitted from this table. |")
+        lines.append("")
+
+    if not has_rows:
+        lines.append("No Kali command trace was recorded.")
+        lines.append("")
+    return lines
+
+
+def _tool_execution_trace_lines(assessment):
+    lines = ["## Tool Execution Trace", ""]
+    found = False
+    for run_name, run in assessment.get("runs", {}).items():
+        if run_name == "http_agent_scan":
+            found = True
+            lines.extend(_http_trace_lines(run_name, run))
+        elif run_name == "kali_agent_scan":
+            found = True
+            lines.extend(_kali_trace_lines(run_name, run))
+    if not found:
+        lines.append("No HTTP service or Kali tool execution trace was recorded.")
+        lines.append("")
+    return lines
+
+
+def _reliability_lines(results):
+    errors = [
+        (run_name, result)
+        for run_name, result in results
+        if result.get("status") == "ERROR"
+    ]
+    lines = ["## Reliability Notes", ""]
+    if not errors:
+        lines.append("No execution or parser errors were recorded.")
+        lines.append("")
+        return lines
+
+    lines.append(
+        "Execution and parser errors are coverage gaps, not confirmed exploitability. "
+        "They should be rerun after runtime health checks because they can hide missed findings."
+    )
+    lines.extend(
+        [
+            "",
+            "| Run | Target | Attack | Reason | Suggested action |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for run_name, result in errors:
+        pseudo_finding = {
+            "status": "ERROR",
+            "attack": result.get("attack"),
+            "reason": result.get("reason", ""),
+        }
+        lines.append(
+            f"| {_escape_table(run_name)} | {_escape_table(result.get('target'))} | "
+            f"{_escape_table(result.get('attack'))} | "
+            f"{_escape_table(_safe_excerpt(result.get('reason'), limit=220))} | "
+            f"{_escape_table(_remediation_for(pseudo_finding))} |"
+        )
+    lines.append("")
+    return lines
 
 
 def build_enterprise_report(assessment):
@@ -122,8 +377,8 @@ def build_enterprise_report(assessment):
         "## Executive Summary",
         "",
         f"- Total test cases evaluated: {summary['tests']}",
-        f"- Confirmed failures: {summary['fail']}",
-        f"- Execution or parser errors: {summary['error']}",
+        f"- Confirmed security failures: {summary['fail']}",
+        f"- Runtime or parser coverage errors: {summary['error']}",
         f"- Active local services discovered: {len(active_agents)}",
         f"- Repository targets in scope: {len(targets)}",
         f"- Assessment runs executed: {', '.join(run_names) if run_names else 'none'}",
@@ -132,10 +387,17 @@ def build_enterprise_report(assessment):
         "",
     ]
 
-    if findings:
-        highest = findings[0]["severity"]
+    confirmed_findings = [finding for finding in findings if finding["status"] == "FAIL"]
+    if confirmed_findings:
+        highest = confirmed_findings[0]["severity"]
         lines.append(
             f"Overall result: findings require remediation. Highest observed severity: {highest}."
+        )
+    elif findings:
+        highest = findings[0]["severity"]
+        lines.append(
+            "Overall result: no confirmed vulnerabilities were detected, but runtime or parser "
+            f"coverage errors require rerun. Highest coverage severity: {highest}."
         )
     else:
         lines.append(
@@ -166,6 +428,8 @@ def build_enterprise_report(assessment):
             lines.append(f"- `{agent.get('name')}` ({agent.get('kind')}): {agent.get('base_url')}{suffix}")
     else:
         lines.append("- No active compatible local services were discovered.")
+    if "kali_agent_scan" in assessment.get("runs", {}):
+        lines.extend(_kali_scope_lines(assessment))
 
     lines.extend(
         [
@@ -179,10 +443,12 @@ def build_enterprise_report(assessment):
             "- Optional Kali-backed recon and prompt probes when requested.",
             "- Rule-based detector evaluation with evidence capture and severity assignment.",
             "",
-            "## Risk Register",
-            "",
         ]
     )
+    lines.extend(_observability_lines(assessment))
+    lines.extend(_dynamic_generation_lines(assessment))
+    lines.extend(_tool_execution_trace_lines(assessment))
+    lines.extend(["## Risk Register", ""])
 
     if findings:
         lines.extend(
@@ -192,7 +458,7 @@ def build_enterprise_report(assessment):
             ]
         )
         for finding in findings:
-            reason = str(finding["reason"]).replace("|", "\\|")
+            reason = _escape_table(_safe_excerpt(finding["reason"], limit=220))
             lines.append(
                 f"| {finding['id']} | {finding['severity']} | {finding['target']} | "
                 f"{finding['attack']} | {finding['status']} | {reason} |"
@@ -210,25 +476,28 @@ def build_enterprise_report(assessment):
                     f"- Run: `{finding['run']}`",
                     f"- Attack: `{finding['attack']}`",
                     f"- Status: `{finding['status']}`",
-                    f"- Finding: {finding['reason']}",
+                    f"- Finding: {_safe_excerpt(finding['reason'], limit=600)}",
                     f"- Recommended remediation: {_remediation_for(finding)}",
                     "",
                     "Prompt:",
                     "",
                     "```text",
-                    fenced_text(finding["prompt"]),
+                    fenced_text(_safe_excerpt(finding["prompt"], limit=1200)),
                     "```",
                     "",
                     "Response excerpt:",
                     "",
                     "```text",
-                    fenced_text(truncate_text(finding["response"])),
+                    fenced_text(_safe_excerpt(finding["response"], limit=500)),
                     "```",
                     "",
                 ]
             )
     else:
         lines.append("No finding details to report.")
+
+    lines.extend([""])
+    lines.extend(_reliability_lines(results))
 
     lines.extend(
         [
@@ -244,6 +513,10 @@ def build_enterprise_report(assessment):
             "",
         ]
     )
+    monitoring = assessment.get("monitoring") or {}
+    for key in ("timeline_markdown", "events_jsonl"):
+        if monitoring.get(key):
+            lines.append(f"- `monitoring` {key}: `{monitoring[key]}`")
     for run_name, run in assessment.get("runs", {}).items():
         for key in ("report_path", "combined_report"):
             if run.get(key):

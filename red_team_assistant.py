@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 
+from assessment_monitor import AssessmentMonitor
 from agent_registry import discover_local_agents, local_discovery_ports
 from enterprise_report import write_enterprise_report
 from http_agent_attack import run_http_agent_attack
@@ -138,7 +139,6 @@ def _heuristic_interpret(text):
             "attack all",
             "assess all",
             "test everything",
-            "enterprise report",
         )
     ):
         action = "master_assessment"
@@ -257,7 +257,52 @@ def _print_summary_line(say, label, summary):
     )
 
 
+def _agent_summary(agents):
+    return [
+        {
+            "name": agent.get("name"),
+            "kind": agent.get("kind"),
+            "status": agent.get("status"),
+            "base_url": agent.get("base_url"),
+            "targets": agent.get("targets") or [],
+        }
+        for agent in agents
+    ]
+
+
+def _target_summary(targets):
+    return [
+        {
+            "name": target.get("name"),
+            "path": target.get("path"),
+        }
+        for target in targets
+    ]
+
+
+def _finalize_monitor(assessment, monitor):
+    artifacts = monitor.write()
+    assessment["monitoring"] = artifacts
+    return artifacts
+
+
 def execute_intent(intent, say=print, kali_host=None):
+    monitor = AssessmentMonitor(request=intent.raw_text, intent=intent.__dict__)
+    monitor.event(
+        "intent",
+        "interpreted",
+        status="ok",
+        details={
+            "action": intent.action,
+            "target": intent.target,
+            "attack": intent.attack,
+            "include_kali": intent.include_kali,
+            "include_adaptive": intent.include_adaptive,
+            "enterprise_report": intent.enterprise_report,
+            "max_payloads": intent.max_payloads,
+            "notes": intent.notes,
+        },
+    )
     assessment = {
         "request": intent.raw_text,
         "intent": intent.__dict__,
@@ -268,28 +313,62 @@ def execute_intent(intent, say=print, kali_host=None):
     }
 
     if intent.action == "quit":
+        monitor.event("assistant", "quit", status="ok")
         return {"done": True, "message": "Exiting."}
     if intent.action == "help":
+        monitor.event("assistant", "help_displayed", status="ok")
         say(HELP_TEXT)
         return {"message": HELP_TEXT}
     if intent.action == "list_targets":
         targets = discover_targets()
+        monitor.event(
+            "target_discovery",
+            "repository_targets_listed",
+            status="ok",
+            details={"targets": _target_summary(targets)},
+        )
+        assessment["targets"] = targets
+        _finalize_monitor(assessment, monitor)
         for target in targets:
             say(f"- {target['name']}: {target['path']}")
         return {"targets": targets}
     if intent.action == "discover_agents":
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_started",
+            status="running",
+            details={"host": "127.0.0.1", "ports": "18080,18101-18110"},
+        )
         agents = _active_agents()
         assessment["active_agents"] = agents
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_completed",
+            status="ok",
+            details={"agents": _agent_summary(agents), "count": len(agents)},
+        )
+        artifacts = _finalize_monitor(assessment, monitor)
         if not agents:
             say("No active compatible local agents found.")
         for agent in agents:
             target_text = ", ".join(agent.get("targets") or [])
             suffix = f" targets={target_text}" if target_text else ""
             say(f"- {agent['name']} ({agent['kind']}) {agent['base_url']}{suffix}")
+        say(f"Assessment timeline: {artifacts['timeline_markdown']}")
         return assessment
 
     if intent.action == "static_scan":
         say("Running static payload scan against repository targets...")
+        monitor.event(
+            "static_scan",
+            "started",
+            status="running",
+            details={
+                "target": intent.target,
+                "attack": intent.attack,
+                "targets": _target_summary(assessment["targets"]),
+            },
+        )
         scan = run_all_attacks(target_name=intent.target, attack_name=intent.attack)
         summary = _scan_summary(scan)
         assessment["runs"]["static_scan"] = {
@@ -297,45 +376,103 @@ def execute_intent(intent, say=print, kali_host=None):
             "results": scan["results"],
             "combined_report": str(scan["combined_report"]),
         }
+        monitor.event("static_scan", "completed", status="ok", details=summary)
         _print_summary_line(say, "Static scan", summary)
 
     elif intent.action == "attack_active_agents":
         say("Discovering active compatible local agents, running reconnaissance, and generating dynamic probes...")
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_started",
+            status="running",
+            details={"host": "127.0.0.1", "ports": "18080,18101-18110"},
+        )
         agents = _active_agents(timeout=1)
         assessment["active_agents"] = agents
-        http_report = run_http_agent_attack(agents)
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_completed",
+            status="ok",
+            details={"agents": _agent_summary(agents), "count": len(agents)},
+        )
+        monitor.event(
+            "http_agent_scan",
+            "started",
+            status="running",
+            details={"agent_count": len(agents), "include_static": True, "include_dynamic": True},
+        )
+        http_report = run_http_agent_attack(agents, monitor=monitor)
         assessment["runs"]["http_agent_scan"] = http_report
+        monitor.event("http_agent_scan", "completed", status="ok", details=http_report["summary"])
         _print_summary_line(say, "HTTP agent scan", http_report["summary"])
 
     elif intent.action == "local_red_team":
         say("Running adaptive local red-team scan...")
+        monitor.event(
+            "local_red_team",
+            "started",
+            status="running",
+            details={"target": intent.target, "max_payloads": intent.max_payloads},
+        )
         local_report = run_local_red_team_scan(
             selected_target=intent.target,
             max_payloads=intent.max_payloads,
         )
         assessment["runs"]["local_red_team"] = local_report
+        monitor.event("local_red_team", "completed", status="ok", details=local_report["summary"])
         _print_summary_line(say, "Local red-team", local_report["summary"])
 
     elif intent.action == "kali_status":
+        monitor.event("kali_status", "not_executed", status="info")
         say("Kali status is available through the CLI status path. Ask me to run the Kali assessment to execute probes.")
 
     elif intent.action == "kali_attack":
         say("Running ThinkPad/Kali-backed agent assessment...")
+        monitor.event(
+            "kali_agent_scan",
+            "started",
+            status="running",
+            details={"host": kali_host or os.environ.get("KALI_SSH_HOST", "kali-redteam")},
+        )
         kali_report = run_kali_agent_attack(
             host=kali_host or os.environ.get("KALI_SSH_HOST", "kali-redteam"),
             identity_file=_identity_file(),
             ollama_model=os.environ.get("OLLAMA_MODEL"),
             ollama_timeout=int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "180")),
             report_path="reports/kali_agent_scan.json",
+            monitor=monitor,
         )
         assessment["runs"]["kali_agent_scan"] = kali_report
+        monitor.event("kali_agent_scan", "assistant_completed", status="ok", details=kali_report["summary"])
         _print_summary_line(say, "Kali agent scan", kali_report["summary"])
 
     elif intent.action == "master_assessment":
         say("Running master assessment: discovery, repo-target scan, dynamic active-agent scan, and report generation.")
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_started",
+            status="running",
+            details={"host": "127.0.0.1", "ports": "18080,18101-18110"},
+        )
         agents = _active_agents(timeout=1)
         assessment["active_agents"] = agents
+        monitor.event(
+            "agent_discovery",
+            "active_agent_discovery_completed",
+            status="ok",
+            details={"agents": _agent_summary(agents), "count": len(agents)},
+        )
 
+        monitor.event(
+            "static_scan",
+            "started",
+            status="running",
+            details={
+                "target": intent.target,
+                "attack": intent.attack,
+                "targets": _target_summary(assessment["targets"]),
+            },
+        )
         scan = run_all_attacks(target_name=intent.target, attack_name=intent.attack)
         summary = _scan_summary(scan)
         assessment["runs"]["static_scan"] = {
@@ -343,43 +480,80 @@ def execute_intent(intent, say=print, kali_host=None):
             "results": scan["results"],
             "combined_report": str(scan["combined_report"]),
         }
+        monitor.event("static_scan", "completed", status="ok", details=summary)
         _print_summary_line(say, "Static scan", summary)
 
         if agents:
-            http_report = run_http_agent_attack(agents)
+            monitor.event(
+                "http_agent_scan",
+                "started",
+                status="running",
+                details={"agent_count": len(agents), "include_static": True, "include_dynamic": True},
+            )
+            http_report = run_http_agent_attack(agents, monitor=monitor)
             assessment["runs"]["http_agent_scan"] = http_report
+            monitor.event("http_agent_scan", "completed", status="ok", details=http_report["summary"])
             _print_summary_line(say, "HTTP agent scan", http_report["summary"])
         else:
+            monitor.event("http_agent_scan", "skipped_no_agents", status="info")
             say("No active compatible local agents were running; skipped HTTP service attack.")
 
         if intent.include_adaptive:
+            monitor.event(
+                "local_red_team",
+                "started",
+                status="running",
+                details={"target": intent.target, "max_payloads": intent.max_payloads},
+            )
             local_report = run_local_red_team_scan(
                 selected_target=intent.target,
                 max_payloads=intent.max_payloads,
             )
             assessment["runs"]["local_red_team"] = local_report
+            monitor.event("local_red_team", "completed", status="ok", details=local_report["summary"])
             _print_summary_line(say, "Local red-team", local_report["summary"])
 
         if intent.include_kali:
+            monitor.event(
+                "kali_agent_scan",
+                "started",
+                status="running",
+                details={"host": kali_host or os.environ.get("KALI_SSH_HOST", "kali-redteam")},
+            )
             kali_report = run_kali_agent_attack(
                 host=kali_host or os.environ.get("KALI_SSH_HOST", "kali-redteam"),
                 identity_file=_identity_file(),
                 ollama_model=os.environ.get("OLLAMA_MODEL"),
                 ollama_timeout=int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "180")),
                 report_path="reports/kali_agent_scan.json",
+                monitor=monitor,
             )
             assessment["runs"]["kali_agent_scan"] = kali_report
+            monitor.event("kali_agent_scan", "assistant_completed", status="ok", details=kali_report["summary"])
             _print_summary_line(say, "Kali agent scan", kali_report["summary"])
 
     else:
+        monitor.event("assistant", "fallback_help_displayed", status="info")
         say(HELP_TEXT)
         return {"message": HELP_TEXT}
 
     if intent.enterprise_report or intent.action == "master_assessment":
+        monitor.event("reporting", "enterprise_report_started", status="running")
+        _finalize_monitor(assessment, monitor)
+        report = write_enterprise_report(assessment)
+        assessment["enterprise_report"] = report
+        monitor.event("reporting", "enterprise_report_written", status="ok", details=report)
+        artifacts = _finalize_monitor(assessment, monitor)
         report = write_enterprise_report(assessment)
         assessment["enterprise_report"] = report
         say(f"Enterprise report: {report['markdown_report']}")
         say(f"Report JSON: {report['json_report']}")
+        say(f"Assessment timeline: {artifacts['timeline_markdown']}")
+        say(f"Assessment events: {artifacts['events_jsonl']}")
+    else:
+        monitor.event("assessment", "completed", status="ok")
+        artifacts = _finalize_monitor(assessment, monitor)
+        say(f"Assessment timeline: {artifacts['timeline_markdown']}")
 
     return assessment
 
