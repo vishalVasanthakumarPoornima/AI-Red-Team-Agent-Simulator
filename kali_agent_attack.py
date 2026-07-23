@@ -15,6 +15,9 @@ from pathlib import Path
 from agent_lab_server import DEFAULT_TARGETS
 from scanner.attack_runner import status_counts
 from scanner.detectors import redact_configured_secrets
+from redteam_platform.schemas import AssessmentProfile
+from redteam_platform.scope_policy import ScopePolicy
+from redteam_platform.settings import load_settings
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -332,7 +335,23 @@ def run_kali_agent_attack(
     report_path=None,
     skip_web_recon=False,
     monitor=None,
+    authorization_statement=None,
+    policy_settings=None,
 ):
+    settings = policy_settings or load_settings()
+    policy = ScopePolicy(settings)
+    policy.authorize(
+        f"http://127.0.0.1:{local_port}",
+        statement=authorization_statement or "",
+        source="human-cli",
+        profile=AssessmentProfile.STANDARD,
+    )
+    policy.authorize(
+        f"ssh://{host}",
+        statement=authorization_statement or "",
+        source="human-cli",
+        profile=AssessmentProfile.STANDARD,
+    )
     selected_targets = tuple(targets or DEFAULT_TARGETS)
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

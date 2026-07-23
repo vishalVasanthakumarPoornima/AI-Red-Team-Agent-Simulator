@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 import json
 import re
 
@@ -70,7 +71,7 @@ def _finding_rows(results):
             {
                 "id": f"AI-RT-{index:03d}",
                 "run": run_name,
-                "target": result.get("target", "unknown"),
+                "target": _display_target(result.get("target", "unknown")),
                 "attack": result.get("attack", "unknown"),
                 "status": status,
                 "severity": severity,
@@ -102,6 +103,14 @@ def _safe_excerpt(value, limit=240):
     return truncate_text(text, limit=limit)
 
 
+def _display_target(value):
+    text = str(value or "unknown")
+    parsed = urlparse(text)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path or '/'}"
+    return text
+
+
 def _tool_status(returncode):
     if returncode is None:
         return "unknown"
@@ -120,6 +129,21 @@ def _remediation_for(finding):
     if finding.get("status") == "ERROR":
         return "Fix service reliability or parser compatibility so failures cannot hide security findings."
     attack = str(finding.get("attack", "")).lower()
+    if "sensitive_data_exposure" in attack:
+        return (
+            "Require local session authorization for task, chat, and memory APIs; minimize returned history; "
+            "and redact sensitive fields from list endpoints."
+        )
+    if "tool_policy_exposure" in attack:
+        return (
+            "Restrict tool-policy endpoints to authenticated local sessions and avoid exposing dangerous command "
+            "entries unless the caller has an explicit admin/debug role."
+        )
+    if "json_reflection" in attack:
+        return (
+            "Keep JSON responses escaped at every UI render point, validate reflected fields, and add browser tests "
+            "that confirm payloads are rendered as text rather than HTML."
+        )
     if "secret" in attack:
         return "Move secrets out of prompts and tools, enforce secret redaction, and add output filtering tests."
     if "prompt" in attack:
@@ -154,13 +178,26 @@ def _kali_scope_lines(assessment):
     lines = ["", "### Kali Lab Assessment", ""]
     found = False
     for run_name, run in assessment.get("runs", {}).items():
-        if run_name != "kali_agent_scan":
+        if run_name == "kali_agent_scan":
+            found = True
+            lines.append(f"- Kali host: `{run.get('kali_host', 'unknown')}`")
+            lines.append(f"- Base URL from Kali: `{run.get('base_url_on_kali', 'unknown')}`")
+            targets = ", ".join(f"`{target}`" for target in run.get("targets", []) or [])
+            lines.append(f"- Exposed lab targets: {targets or 'none'}")
+        elif run_name.startswith("kali_url_scan"):
+            found = True
+            tunnel = run.get("reverse_tunnel") or {}
+            lines.append(f"- Kali host: `{run.get('kali_host', 'unknown')}`")
+            lines.append(f"- Original target URL: `{run.get('original_target_url', run.get('target_url', 'unknown'))}`")
+            lines.append(f"- Effective URL from Kali: `{run.get('target_url', 'unknown')}`")
+            lines.append(f"- Reverse tunnel: `{bool(tunnel.get('enabled'))}`")
+            if tunnel.get("enabled"):
+                lines.append(
+                    f"- Tunnel mapping: Kali `127.0.0.1:{tunnel.get('remote_port')}` -> "
+                    f"local `127.0.0.1:{tunnel.get('local_port')}`"
+                )
+        else:
             continue
-        found = True
-        lines.append(f"- Kali host: `{run.get('kali_host', 'unknown')}`")
-        lines.append(f"- Base URL from Kali: `{run.get('base_url_on_kali', 'unknown')}`")
-        targets = ", ".join(f"`{target}`" for target in run.get("targets", []) or [])
-        lines.append(f"- Exposed lab targets: {targets or 'none'}")
     if not found:
         lines.append("- No Kali-backed assessment run was included.")
     return lines
@@ -226,7 +263,7 @@ def _http_trace_lines(run_name, run):
         notes = probe.get("parse_error") or result.get("reason") or ""
         lines.append(
             f"| {probe_type} | {_escape_table(probe.get('agent'))} | "
-            f"{_escape_table(probe.get('target'))} | {_escape_table(probe.get('attack'))} | "
+            f"{_escape_table(_display_target(probe.get('target')))} | {_escape_table(probe.get('attack'))} | "
             f"{_escape_table(http_status)} | {_escape_table(result_status)} | "
             f"{_escape_table(_safe_excerpt(notes, limit=180))} |"
         )
@@ -289,7 +326,7 @@ def _kali_trace_lines(run_name, run):
             remote = probe.get("remote") or {}
             notes = probe.get("parse_error") or result.get("reason") or ""
             lines.append(
-                f"| {_escape_table(probe.get('target'))} | {_escape_table(probe.get('attack'))} | "
+                f"| {_escape_table(_display_target(probe.get('target')))} | {_escape_table(probe.get('attack'))} | "
                 f"{remote.get('returncode')} | {_escape_table(result.get('status') or 'UNPARSED')} | "
                 f"{_escape_table(_safe_excerpt(notes, limit=180))} |"
             )
@@ -310,7 +347,7 @@ def _tool_execution_trace_lines(assessment):
         if run_name == "http_agent_scan":
             found = True
             lines.extend(_http_trace_lines(run_name, run))
-        elif run_name == "kali_agent_scan":
+        elif run_name == "kali_agent_scan" or run_name.startswith("kali_url_scan"):
             found = True
             lines.extend(_kali_trace_lines(run_name, run))
     if not found:
@@ -349,7 +386,7 @@ def _reliability_lines(results):
             "reason": result.get("reason", ""),
         }
         lines.append(
-            f"| {_escape_table(run_name)} | {_escape_table(result.get('target'))} | "
+            f"| {_escape_table(run_name)} | {_escape_table(_display_target(result.get('target')))} | "
             f"{_escape_table(result.get('attack'))} | "
             f"{_escape_table(_safe_excerpt(result.get('reason'), limit=220))} | "
             f"{_escape_table(_remediation_for(pseudo_finding))} |"
@@ -428,7 +465,9 @@ def build_enterprise_report(assessment):
             lines.append(f"- `{agent.get('name')}` ({agent.get('kind')}): {agent.get('base_url')}{suffix}")
     else:
         lines.append("- No active compatible local services were discovered.")
-    if "kali_agent_scan" in assessment.get("runs", {}):
+    if "kali_agent_scan" in assessment.get("runs", {}) or any(
+        name.startswith("kali_url_scan") for name in assessment.get("runs", {})
+    ):
         lines.extend(_kali_scope_lines(assessment))
 
     lines.extend(

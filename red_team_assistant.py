@@ -6,12 +6,16 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
+import urllib.error
+import urllib.request
 
 from assessment_monitor import AssessmentMonitor
 from agent_registry import discover_local_agents, local_discovery_ports
 from enterprise_report import write_enterprise_report
 from http_agent_attack import run_http_agent_attack
 from kali_agent_attack import run_kali_agent_attack
+from kali_url_attack import run_kali_url_attack
 from local_red_team.run_local_red_team_scan import run_scan as run_local_red_team_scan
 from scanner.attack_runner import run_all_attacks, status_counts
 from scanner.target_loader import discover_targets
@@ -25,6 +29,8 @@ HELP_TEXT = """I can understand requests like:
 - run a comprehensive dynamic demo assessment with Kali
 - run adaptive local red team against travel_agent
 - run the ThinkPad Kali assessment
+- attack Dexter live at localhost:5173
+- attack the web app at http://127.0.0.1:5173 with Kali
 - full assessment with Kali and enterprise report
 
 The assistant stays scoped to local/authorized targets configured in this repo.
@@ -41,6 +47,7 @@ class AssistantIntent:
     include_kali: bool = False
     include_adaptive: bool = False
     enterprise_report: bool = False
+    url: str | None = None
     max_payloads: int = 2
     raw_text: str = ""
     notes: list[str] = field(default_factory=list)
@@ -82,6 +89,41 @@ def _extract_attack(text):
     return None
 
 
+def _extract_url(text):
+    match = re.search(r"https?://[^\s'\"<>]+", text, re.I)
+    if match:
+        return match.group(0).rstrip(".,)")
+    host_port = re.search(r"\b(?:localhost|127\.0\.0\.1):(\d{2,5})\b", text, re.I)
+    if host_port:
+        return f"http://{host_port.group(0)}"
+    return None
+
+
+def _is_loopback_url(url):
+    parsed = urlparse(url or "")
+    return parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _local_url_reachable(url, timeout=1.5):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return response.status < 500
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def _web_app_scan_targets(intent):
+    primary_url = intent.url or "http://127.0.0.1:5173"
+    targets = [("frontend", primary_url)]
+    parsed = urlparse(primary_url)
+    mentions_dexter = "dexter" in (intent.raw_text or "").lower()
+    if mentions_dexter and parsed.hostname in {"127.0.0.1", "localhost"} and parsed.port == 5173:
+        api_url = "http://127.0.0.1:8000"
+        if _local_url_reachable(api_url + "/status") or _local_url_reachable(api_url + "/api/system/health"):
+            targets.append(("api", api_url))
+    return targets
+
+
 def _extract_max_payloads(text, default=2):
     match = re.search(r"\b(?:max payloads|payloads|prompts)\s*(?:=|:)?\s*(\d+)\b", text, re.I)
     if not match:
@@ -95,11 +137,14 @@ def _heuristic_interpret(text):
     lowered = " ".join(text.lower().split())
     target = _extract_target(text)
     attack = _extract_attack(text)
+    url = _extract_url(text)
+    if not url and "dexter" in lowered and "5173" in lowered:
+        url = "http://127.0.0.1:5173"
     comprehensive = any(word in lowered for word in ("comprehensive", "demo", "showcase"))
     include_kali = any(
         word in lowered
-        for word in ("kali", "thinkpad", "nmap", "nikto", "whatweb")
-    ) or comprehensive
+        for word in ("kali", "thinkpad", "nmap", "nikto", "whatweb", "sql injection", "sqli")
+    ) or comprehensive or bool(url)
     include_adaptive = any(
         phrase in lowered
         for phrase in (
@@ -128,6 +173,9 @@ def _heuristic_interpret(text):
         action = "attack_active_agents"
     elif any(phrase in lowered for phrase in ("find active", "discover active", "running agents", "same machine")):
         action = "discover_agents"
+    elif url and any(word in lowered for word in ("attack", "assess", "scan", "test", "break", "sqli", "sql injection")):
+        action = "web_app_attack"
+        enterprise = True
     elif any(
         phrase in lowered
         for phrase in (
@@ -161,6 +209,7 @@ def _heuristic_interpret(text):
         include_kali=include_kali,
         include_adaptive=include_adaptive,
         enterprise_report=enterprise,
+        url=url,
         max_payloads=max_payloads,
         raw_text=text,
     )
@@ -175,7 +224,7 @@ def _local_model_interpret(text):
     system_prompt = """
 You convert user requests into JSON for a local authorized AI red-team CLI.
 Allowed action values: help, quit, list_targets, discover_agents, static_scan,
-attack_active_agents, local_red_team, kali_status, kali_attack, master_assessment.
+attack_active_agents, local_red_team, kali_status, kali_attack, web_app_attack, master_assessment.
 Return JSON only. Do not add explanations.
 """.strip()
     prompt = f"""
@@ -190,6 +239,7 @@ Return:
   "include_kali": false,
   "include_adaptive": false,
   "enterprise_report": false,
+  "url": null,
   "max_payloads": 2
 }}
 """.strip()
@@ -209,6 +259,7 @@ Return:
         include_kali=bool(parsed.get("include_kali")),
         include_adaptive=bool(parsed.get("include_adaptive")),
         enterprise_report=bool(parsed.get("enterprise_report")),
+        url=parsed.get("url"),
         max_payloads=max(1, min(int(parsed.get("max_payloads") or 2), 10)),
         raw_text=text,
         notes=["interpreted_by_local_model"],
@@ -299,6 +350,7 @@ def execute_intent(intent, say=print, kali_host=None):
             "include_kali": intent.include_kali,
             "include_adaptive": intent.include_adaptive,
             "enterprise_report": intent.enterprise_report,
+            "url": intent.url,
             "max_payloads": intent.max_payloads,
             "notes": intent.notes,
         },
@@ -441,10 +493,50 @@ def execute_intent(intent, say=print, kali_host=None):
             ollama_timeout=int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "180")),
             report_path="reports/kali_agent_scan.json",
             monitor=monitor,
+            authorization_statement=os.environ.get("REDTEAM_AUTHORIZATION_STATEMENT"),
         )
         assessment["runs"]["kali_agent_scan"] = kali_report
         monitor.event("kali_agent_scan", "assistant_completed", status="ok", details=kali_report["summary"])
         _print_summary_line(say, "Kali agent scan", kali_report["summary"])
+
+    elif intent.action == "web_app_attack":
+        scan_targets = _web_app_scan_targets(intent)
+        say(
+            "Running bounded Kali-backed web app assessment against "
+            + ", ".join(url for _, url in scan_targets)
+            + "..."
+        )
+        for index, (label, target_url) in enumerate(scan_targets):
+            run_name = "kali_url_scan" if len(scan_targets) == 1 else f"kali_url_scan_{label}"
+            remote_port = 15173 + index
+            monitor.event(
+                run_name,
+                "started",
+                status="running",
+                details={
+                    "url": target_url,
+                    "tunnel_local": _is_loopback_url(target_url),
+                    "remote_port": remote_port,
+                    "include_web_payloads": True,
+                    "include_agent_probes": False,
+                },
+            )
+            url_report = run_kali_url_attack(
+                host=kali_host or os.environ.get("KALI_SSH_HOST", "kali-redteam"),
+                url=target_url,
+                identity_file=_identity_file(),
+                ssh_timeout=8,
+                report_path=f"reports/{run_name}.json",
+                include_web_payloads=True,
+                include_agent_probes=False,
+                tunnel_local=_is_loopback_url(target_url),
+                remote_port=remote_port,
+                monitor=monitor,
+                authorization_statement=os.environ.get("REDTEAM_AUTHORIZATION_STATEMENT"),
+            )
+            assessment["runs"][run_name] = url_report
+            monitor.event(run_name, "assistant_completed", status="ok", details=url_report["summary"])
+            _print_summary_line(say, f"Kali URL/web app scan ({label})", url_report["summary"])
 
     elif intent.action == "master_assessment":
         say("Running master assessment: discovery, repo-target scan, dynamic active-agent scan, and report generation.")
@@ -527,6 +619,7 @@ def execute_intent(intent, say=print, kali_host=None):
                 ollama_timeout=int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "180")),
                 report_path="reports/kali_agent_scan.json",
                 monitor=monitor,
+                authorization_statement=os.environ.get("REDTEAM_AUTHORIZATION_STATEMENT"),
             )
             assessment["runs"]["kali_agent_scan"] = kali_report
             monitor.event("kali_agent_scan", "assistant_completed", status="ok", details=kali_report["summary"])

@@ -1,0 +1,42 @@
+[redteam]
+bind_host = "127.0.0.1"
+api_port = 18150
+report_root = "reports/runs"
+inventory_cache = "reports/cache/inventory.json"
+allowed_cidrs = ["127.0.0.0/8", "::1/128"]
+allowed_domains = []
+allowed_kali_aliases = []
+allow_public = false
+rate_limit_per_minute = 30
+max_concurrency = 4
+request_body_limit = 32768
+request_timeout_seconds = 60
+retention_days = 30
+configured_agent_endpoints = ["http://127.0.0.1:18080"]
+ollama_endpoints = ["http://127.0.0.1:11434"]
+ollama_discovery_timeout = 1.5
+ollama_live_check = false
+metadata_response_size = 2000000
+listener_discovery_method = "auto"
+listener_cache_ttl_seconds = 30
+include_udp = false
+include_docker = false
+include_stopped_containers = false
+docker_timeout = 5
+include_kali_readiness = false
+kali_live_check = false
+kali_readiness_timeout = 8
+http_metadata_routes = ["/health", "/metadata", "/targets", "/openapi.json", "/v1/models"]
+known_local_service_ports = [18080, 18101, 18102, 8000, 8080, 5000, 5001]
+inventory_cache_ttl_seconds = 60
+passive_only = true
+# api_token = "generate-a-long-random-local-token"
+
+[redteam.dexter]
+name = "Dexter"
+api_endpoint = "http://127.0.0.1:8000"
+health_path = "/status"
+chat_path = "/chat"
+openapi_path = "/openapi.json"
+authentication_mode = "none"
+requires_kali_tunnel = true

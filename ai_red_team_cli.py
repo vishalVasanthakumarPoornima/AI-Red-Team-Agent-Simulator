@@ -11,6 +11,8 @@ import sys
 from local_red_team.run_local_red_team_scan import run_scan as run_local_red_team_scan
 from scanner.attack_runner import run_all_attacks, status_counts
 from scanner.target_loader import discover_targets
+from redteam_platform.scope_policy import ScopePolicy
+from redteam_platform.settings import load_settings
 
 
 DEFAULT_KALI_HOST = os.environ.get("KALI_SSH_HOST", "kali-redteam")
@@ -92,6 +94,9 @@ def cmd_kali_status(args):
         raise CliError("ssh was not found on this machine.")
 
     host = args.host or DEFAULT_KALI_HOST
+    decision = ScopePolicy(load_settings()).decide(f"ssh://{host}", active=False)
+    if not decision.allowed:
+        raise CliError(f"Kali host denied by scope policy: {decision.reason}")
     timeout = max(1, args.timeout)
     identity_file = resolve_identity_file(args.identity_file)
 
@@ -238,6 +243,7 @@ def cmd_kali_attack_agents(args):
         ollama_timeout=args.ollama_timeout,
         report_path=args.report,
         skip_web_recon=args.skip_web_recon,
+        authorization_statement=args.authorization,
     )
     summary = report["summary"]
     if args.fail_on_findings and (summary["fail"] or summary["error"] or summary["unparsed"]):
@@ -255,6 +261,12 @@ def cmd_kali_attack_url(args):
         ssh_timeout=args.ssh_timeout,
         report_path=args.report,
         skip_web_recon=args.skip_web_recon,
+        include_agent_probes=args.include_agent_probes or not args.web_app,
+        include_web_payloads=args.web_app,
+        tunnel_local=args.tunnel_local,
+        local_port=args.local_port,
+        remote_port=args.remote_port,
+        authorization_statement=args.authorization,
     )
     summary = report["summary"]
     if args.fail_on_findings and (summary["fail"] or summary["error"] or summary["unparsed"]):
@@ -428,6 +440,11 @@ def build_parser():
         ),
     )
     attack_parser.add_argument("--ssh-timeout", type=int, default=8)
+    attack_parser.add_argument(
+        "--authorization",
+        required=True,
+        help="Human statement confirming authorization for this active Kali assessment.",
+    )
     attack_parser.add_argument("--local-port", type=int, default=18080)
     attack_parser.add_argument("--remote-port", type=int, default=18080)
     attack_parser.add_argument(
@@ -480,6 +497,37 @@ def build_parser():
         ),
     )
     url_attack_parser.add_argument("--ssh-timeout", type=int, default=8)
+    url_attack_parser.add_argument(
+        "--authorization",
+        required=True,
+        help="Human statement confirming authorization for this active URL assessment.",
+    )
+    url_attack_parser.add_argument(
+        "--web-app",
+        action="store_true",
+        help="Run bounded web-app probes for SQLi, XSS reflection, traversal indicators, prompt injection, and error leakage.",
+    )
+    url_attack_parser.add_argument(
+        "--include-agent-probes",
+        action="store_true",
+        help="Also POST the default AI-agent prompt probes to /invoke.",
+    )
+    url_attack_parser.add_argument(
+        "--tunnel-local",
+        action="store_true",
+        help="Reverse-tunnel a localhost URL to Kali before scanning.",
+    )
+    url_attack_parser.add_argument(
+        "--local-port",
+        type=int,
+        help="Local port to forward when --tunnel-local is used. Defaults to the URL port.",
+    )
+    url_attack_parser.add_argument(
+        "--remote-port",
+        type=int,
+        default=15173,
+        help="Kali loopback port for the reverse tunnel. Default: 15173.",
+    )
     url_attack_parser.add_argument(
         "--report",
         default="reports/kali_url_scan.json",

@@ -10,7 +10,11 @@ mkdir -p "${PIP_CACHE_DIR}"
 
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip
-"${VENV_DIR}/bin/python" -m pip install -r requirements.txt
+if [[ "${INSTALL_DEV_TOOLS:-1}" == "1" ]]; then
+  "${VENV_DIR}/bin/python" -m pip install -e '.[dev]'
+else
+  "${VENV_DIR}/bin/python" -m pip install -e .
+fi
 
 cat <<MSG
 Development environment ready.
@@ -20,4 +24,5 @@ Activate it with:
 
 Run validation with:
   ${VENV_DIR}/bin/python -m unittest discover -s tests
+  ${VENV_DIR}/bin/redteam --help
 MSG

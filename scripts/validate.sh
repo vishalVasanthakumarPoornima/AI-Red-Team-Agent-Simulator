@@ -30,7 +30,24 @@ echo "Syntax/import compilation:"
   scanner \
   targets \
   functional_agents \
-  local_red_team
+  local_red_team \
+  redteam_platform
+
+echo
+echo "New platform CLI smoke:"
+"${PYTHON_BIN}" -m redteam_platform.cli --json doctor
+
+if "${PYTHON_BIN}" -m ruff --version >/dev/null 2>&1; then
+  echo
+  echo "Ruff:"
+  "${PYTHON_BIN}" -m ruff check redteam_platform tests
+fi
+
+if "${PYTHON_BIN}" -m mypy --version >/dev/null 2>&1; then
+  echo
+  echo "MyPy:"
+  "${PYTHON_BIN}" -m mypy redteam_platform
+fi
 
 echo
 echo "Target discovery:"

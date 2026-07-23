@@ -1,0 +1,395 @@
+"""Central validated configuration with file, .env, environment, and CLI layers."""
+
+from __future__ import annotations
+
+import os
+import ipaddress
+import re
+import tomllib
+from pathlib import Path
+from typing import Any, Literal
+from urllib.parse import urlparse
+
+from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class DexterSettings(BaseSettings):
+    model_config = SettingsConfigDict(extra="forbid")
+
+    name: str = "Dexter"
+    api_endpoint: str = "http://127.0.0.1:8000"
+    health_path: str = "/status"
+    chat_path: str = "/chat"
+    openapi_path: str = "/openapi.json"
+    ollama_endpoint: str | None = None
+    tool_endpoints: list[str] = Field(default_factory=list)
+    memory_endpoint: str | None = None
+    vector_endpoint: str | None = None
+    voice_endpoints: list[str] = Field(default_factory=list)
+    authentication_mode: str = "none"
+    requires_kali_tunnel: bool = True
+
+    @field_validator(
+        "api_endpoint",
+        "ollama_endpoint",
+        "memory_endpoint",
+        "vector_endpoint",
+        mode="before",
+    )
+    @classmethod
+    def validate_optional_urls(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        return _validated_http_url(value, "Dexter endpoint")
+
+    @field_validator("tool_endpoints", "voice_endpoints", mode="after")
+    @classmethod
+    def validate_url_lists(cls, values: list[str]) -> list[str]:
+        return [_validated_http_url(value, "Dexter endpoint") for value in values]
+
+    @field_validator("health_path", "chat_path", "openapi_path")
+    @classmethod
+    def validate_paths(cls, value: str) -> str:
+        if not value.startswith("/") or "?" in value or "#" in value:
+            raise ValueError("Dexter paths must start with '/' and cannot contain query strings or fragments")
+        return value
+
+
+class ConfigurationError(ValueError):
+    """Actionable configuration failure raised before application startup."""
+
+
+HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+SSH_ALIAS_RE = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _validated_host(value: Any, label: str) -> str:
+    text = str(value or "").strip().rstrip(".")
+    if not text or any(character.isspace() for character in text):
+        raise ValueError(f"{label} must be a non-empty hostname or IP address without whitespace")
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        pass
+    try:
+        ascii_host = text.encode("idna").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise ValueError(f"{label} is not valid IDNA") from exc
+    if not HOST_RE.fullmatch(ascii_host) or ".." in ascii_host:
+        raise ValueError(f"{label} is not a valid hostname or IP address")
+    return ascii_host
+
+
+def _validated_http_url(value: Any, label: str) -> str:
+    text = str(value or "").strip()
+    try:
+        parsed = urlparse(text)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{label} has an invalid port") from exc
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"{label} must use http or https")
+    if not parsed.hostname:
+        raise ValueError(f"{label} must include a host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{label} cannot contain credentials")
+    _validated_host(parsed.hostname, f"{label} host")
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError(f"{label} port must be between 1 and 65535")
+    if parsed.fragment:
+        raise ValueError(f"{label} cannot contain a URL fragment")
+    return text.rstrip("/")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="REDTEAM_",
+        env_file=None,
+        extra="ignore",
+        enable_decoding=False,
+    )
+
+    bind_host: str = "127.0.0.1"
+    api_port: int = Field(default=18150, ge=1, le=65535)
+    report_root: Path = Path("reports/runs")
+    inventory_cache: Path = Path("reports/cache/inventory.json")
+    user_config: Path = Path.home() / ".config" / "ai-red-team" / "config.toml"
+    allowed_cidrs: list[str] = Field(default_factory=lambda: ["127.0.0.0/8", "::1/128"])
+    allowed_domains: list[str] = Field(default_factory=list)
+    allowed_kali_aliases: list[str] = Field(default_factory=list)
+    allow_public: bool = False
+    api_token: SecretStr | None = None
+    rate_limit_per_minute: int = Field(default=30, ge=1, le=10000)
+    max_concurrency: int = Field(default=4, ge=1, le=128)
+    request_body_limit: int = Field(default=32768, ge=1024, le=10_000_000)
+    request_timeout_seconds: int = Field(default=60, ge=1, le=3600)
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    configured_agent_endpoints: list[str] = Field(default_factory=list)
+    ollama_endpoints: list[str] = Field(
+        default_factory=lambda: ["http://127.0.0.1:11434"]
+    )
+    ollama_discovery_timeout: float = Field(default=1.5, gt=0, le=30)
+    ollama_live_check: bool = False
+    metadata_response_size: int = Field(default=2_000_000, ge=1024, le=20_000_000)
+    listener_discovery_method: Literal["auto", "psutil", "native"] = "auto"
+    listener_cache_ttl_seconds: int = Field(default=30, ge=1, le=86400)
+    include_udp: bool = False
+    include_docker: bool = False
+    include_stopped_containers: bool = False
+    docker_timeout: float = Field(default=5, gt=0, le=60)
+    include_kali_readiness: bool = False
+    kali_live_check: bool = False
+    kali_readiness_timeout: float = Field(default=8, gt=0, le=60)
+    http_metadata_routes: list[str] = Field(
+        default_factory=lambda: [
+            "/health",
+            "/metadata",
+            "/targets",
+            "/openapi.json",
+            "/v1/models",
+        ]
+    )
+    known_local_service_ports: list[int] = Field(
+        default_factory=lambda: [
+            18080,
+            18101,
+            18102,
+            8000,
+            8080,
+            5000,
+            5001,
+        ]
+    )
+    inventory_cache_ttl_seconds: int = Field(default=60, ge=1, le=86400)
+    passive_only: bool = True
+    kali_ssh_host: str | None = None
+    kali_ssh_key: Path | None = None
+    dexter: DexterSettings = Field(default_factory=DexterSettings)
+
+    @field_validator(
+        "allowed_cidrs",
+        "allowed_domains",
+        "allowed_kali_aliases",
+        "configured_agent_endpoints",
+        "ollama_endpoints",
+        "http_metadata_routes",
+        mode="before",
+    )
+    @classmethod
+    def parse_list(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("known_local_service_ports", mode="before")
+    @classmethod
+    def parse_ports(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("bind_host")
+    @classmethod
+    def loopback_default(cls, value: str) -> str:
+        return _validated_host(value, "bind_host")
+
+    @field_validator("allowed_cidrs", mode="after")
+    @classmethod
+    def validate_cidrs(cls, values: list[str]) -> list[str]:
+        networks: list[str] = []
+        for value in values:
+            try:
+                canonical = str(ipaddress.ip_network(str(value).strip(), strict=False))
+            except ValueError as exc:
+                raise ValueError(f"allowed_cidrs contains invalid network {value!r}") from exc
+            if canonical not in networks:
+                networks.append(canonical)
+        return networks
+
+    @field_validator("allowed_domains", mode="after")
+    @classmethod
+    def validate_domains(cls, values: list[str]) -> list[str]:
+        domains: list[str] = []
+        for value in values:
+            text = str(value).strip().lstrip(".")
+            if "://" in text or "/" in text or "*" in text:
+                raise ValueError("allowed_domains entries must be bare exact or suffix domain names")
+            normalized = _validated_host(text, "allowed domain")
+            try:
+                ipaddress.ip_address(normalized)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("allowed_domains cannot contain IP addresses; use allowed_cidrs")
+            if normalized not in domains:
+                domains.append(normalized)
+        return domains
+
+    @field_validator("allowed_kali_aliases", mode="after")
+    @classmethod
+    def validate_ssh_aliases(cls, values: list[str]) -> list[str]:
+        aliases: list[str] = []
+        for value in values:
+            alias = str(value).strip()
+            if not SSH_ALIAS_RE.fullmatch(alias):
+                raise ValueError(
+                    "allowed_kali_aliases entries must be SSH aliases or user@host without options"
+                )
+            if alias not in aliases:
+                aliases.append(alias)
+        return aliases
+
+    @field_validator("configured_agent_endpoints", "ollama_endpoints", mode="after")
+    @classmethod
+    def validate_model_and_agent_urls(cls, values: list[str]) -> list[str]:
+        return [_validated_http_url(value, "configured endpoint") for value in values]
+
+    @field_validator("http_metadata_routes", mode="after")
+    @classmethod
+    def validate_metadata_routes(cls, values: list[str]) -> list[str]:
+        routes: list[str] = []
+        for value in values:
+            route = str(value).strip()
+            if (
+                not route.startswith("/")
+                or "://" in route
+                or "?" in route
+                or "#" in route
+                or ".." in route
+            ):
+                raise ValueError(
+                    "http_metadata_routes entries must be absolute read-only paths without URLs, queries, fragments, or traversal"
+                )
+            if route not in routes:
+                routes.append(route)
+        return routes
+
+    @field_validator("known_local_service_ports", mode="after")
+    @classmethod
+    def validate_known_ports(cls, values: list[int]) -> list[int]:
+        ports: list[int] = []
+        for value in values:
+            port = int(value)
+            if not 1 <= port <= 65535:
+                raise ValueError("known_local_service_ports values must be between 1 and 65535")
+            if port not in ports:
+                ports.append(port)
+        return ports
+
+    @field_validator("report_root", "inventory_cache", "user_config", mode="before")
+    @classmethod
+    def validate_paths(cls, value: Any) -> Path:
+        text = str(value or "").strip()
+        if not text or "\x00" in text:
+            raise ValueError("configured paths must be non-empty and cannot contain NUL bytes")
+        return Path(text).expanduser()
+
+    @field_validator("kali_ssh_host")
+    @classmethod
+    def validate_kali_host(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not SSH_ALIAS_RE.fullmatch(candidate):
+            raise ValueError("kali_ssh_host must be an SSH alias or user@host without options")
+        return candidate
+
+
+ENV_FIELD_MAP = {
+    "REDTEAM_BIND_HOST": "bind_host",
+    "REDTEAM_API_PORT": "api_port",
+    "REDTEAM_REPORT_ROOT": "report_root",
+    "REDTEAM_INVENTORY_CACHE": "inventory_cache",
+    "REDTEAM_ALLOWED_CIDRS": "allowed_cidrs",
+    "REDTEAM_ALLOWED_DOMAINS": "allowed_domains",
+    "REDTEAM_ALLOWED_KALI_ALIASES": "allowed_kali_aliases",
+    "REDTEAM_ALLOW_PUBLIC": "allow_public",
+    "REDTEAM_API_TOKEN": "api_token",
+    "REDTEAM_RATE_LIMIT_PER_MINUTE": "rate_limit_per_minute",
+    "REDTEAM_MAX_CONCURRENCY": "max_concurrency",
+    "REDTEAM_REQUEST_BODY_LIMIT": "request_body_limit",
+    "REDTEAM_REQUEST_TIMEOUT_SECONDS": "request_timeout_seconds",
+    "REDTEAM_RETENTION_DAYS": "retention_days",
+    "REDTEAM_CONFIGURED_AGENT_ENDPOINTS": "configured_agent_endpoints",
+    "REDTEAM_OLLAMA_ENDPOINTS": "ollama_endpoints",
+    "REDTEAM_OLLAMA_DISCOVERY_TIMEOUT": "ollama_discovery_timeout",
+    "REDTEAM_OLLAMA_LIVE_CHECK": "ollama_live_check",
+    "REDTEAM_METADATA_RESPONSE_SIZE": "metadata_response_size",
+    "REDTEAM_LISTENER_DISCOVERY_METHOD": "listener_discovery_method",
+    "REDTEAM_LISTENER_CACHE_TTL_SECONDS": "listener_cache_ttl_seconds",
+    "REDTEAM_INCLUDE_UDP": "include_udp",
+    "REDTEAM_INCLUDE_DOCKER": "include_docker",
+    "REDTEAM_INCLUDE_STOPPED_CONTAINERS": "include_stopped_containers",
+    "REDTEAM_DOCKER_TIMEOUT": "docker_timeout",
+    "REDTEAM_INCLUDE_KALI_READINESS": "include_kali_readiness",
+    "REDTEAM_KALI_LIVE_CHECK": "kali_live_check",
+    "REDTEAM_KALI_READINESS_TIMEOUT": "kali_readiness_timeout",
+    "REDTEAM_HTTP_METADATA_ROUTES": "http_metadata_routes",
+    "REDTEAM_KNOWN_LOCAL_SERVICE_PORTS": "known_local_service_ports",
+    "REDTEAM_INVENTORY_CACHE_TTL_SECONDS": "inventory_cache_ttl_seconds",
+    "REDTEAM_PASSIVE_ONLY": "passive_only",
+    "KALI_SSH_HOST": "kali_ssh_host",
+    "KALI_SSH_KEY": "kali_ssh_key",
+}
+
+
+def _dotenv_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
+def _toml_values(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    section = data.get("redteam", {})
+    if not isinstance(section, dict):
+        raise ValueError("Configuration file must contain a [redteam] table.")
+    return section
+
+
+def load_settings(
+    config_path: str | Path | None = None,
+    overrides: dict[str, Any] | None = None,
+) -> Settings:
+    """Load config file < .env < process environment < explicit overrides."""
+
+    try:
+        selected_path = Path(config_path).expanduser() if config_path else Settings().user_config
+        merged: dict[str, Any] = _toml_values(selected_path)
+        dotenv = _dotenv_values(Path(".env"))
+        combined_env = {**dotenv, **os.environ}
+        for env_name, field_name in ENV_FIELD_MAP.items():
+            if env_name in combined_env:
+                merged[field_name] = combined_env[env_name]
+        if overrides:
+            merged.update({key: value for key, value in overrides.items() if value is not None})
+        return Settings.model_validate(merged)
+    except (OSError, tomllib.TOMLDecodeError, ValidationError, ValueError) as exc:
+        if isinstance(exc, ValidationError):
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+        else:
+            details = str(exc)
+        raise ConfigurationError(f"Invalid red-team configuration: {details}") from exc
+
+
+def sanitized_settings(settings: Settings) -> dict[str, Any]:
+    payload = settings.model_dump(mode="json")
+    payload["api_token"] = "<configured>" if settings.api_token else "<not-configured>"
+    if payload.get("kali_ssh_key"):
+        payload["kali_ssh_key"] = "<configured-path>"
+    return payload

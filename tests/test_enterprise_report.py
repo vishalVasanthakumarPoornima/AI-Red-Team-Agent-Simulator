@@ -116,6 +116,48 @@ class EnterpriseReportTests(unittest.TestCase):
         self.assertEqual(data["summary"]["fail"], 0)
         self.assertEqual(data["summary"]["error"], 1)
 
+    def test_report_includes_kali_url_scope(self):
+        assessment = {
+            "request": "attack Dexter live at localhost:5173",
+            "targets": [],
+            "active_agents": [],
+            "runs": {
+                "kali_url_scan_api": {
+                    "target_url": "http://127.0.0.1:15173",
+                    "original_target_url": "http://127.0.0.1:5173",
+                    "kali_host": "kali-redteam",
+                    "reverse_tunnel": {
+                        "enabled": True,
+                        "local_port": 5173,
+                        "remote_port": 15173,
+                    },
+                    "web_recon": {
+                        "sqlmap": {
+                            "command": "sqlmap -u http://127.0.0.1:15173/?q=1",
+                            "returncode": 0,
+                            "stdout": "all tested parameters do not appear to be injectable",
+                            "stderr": "",
+                        }
+                    },
+                    "endpoint_checks": {
+                        "command": "bash -s",
+                        "returncode": 0,
+                        "stdout": "200 /",
+                        "stderr": "",
+                    },
+                    "probes": [],
+                    "report_path": "reports/kali_url_scan.json",
+                }
+            },
+        }
+
+        markdown, _ = build_enterprise_report(assessment)
+
+        self.assertIn("Original target URL: `http://127.0.0.1:5173`", markdown)
+        self.assertIn("Effective URL from Kali: `http://127.0.0.1:15173`", markdown)
+        self.assertIn("sqlmap -u", markdown)
+        self.assertIn("reports/kali_url_scan.json", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-agent-red-team-simulator"
+version = "0.2.0"
+description = "Local-first authorized AI agent security assessment platform"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "langgraph>=0.2.60,<2",
+  "psutil>=6,<8",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.6,<3",
+  "rich>=13.9,<15",
+  "typer>=0.12,<1",
+  "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "coverage[toml]>=7.6,<8",
+  "mypy>=1.14,<2",
+  "pip-audit>=2.7,<3",
+  "pre-commit>=4,<5",
+  "ruff>=0.9,<1",
+]
+pdf = ["reportlab>=4.2,<5"]
+
+[project.scripts]
+redteam = "redteam_platform.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["redteam_platform*", "scanner*", "functional_agents*", "targets*"]
+
+[tool.setuptools]
+py-modules = ["agent_registry"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+exclude = ["output", "reports", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+exclude = "^(output|reports|\\.venv)/"
+
+[tool.coverage.run]
+branch = true
+source = ["redteam_platform", "scanner"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 65

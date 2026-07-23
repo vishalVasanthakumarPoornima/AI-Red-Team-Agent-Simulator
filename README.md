@@ -13,6 +13,78 @@ This project is intended for isolated lab and portfolio use only. Test local
 agents that you own or control. Do not use it against public websites,
 third-party systems, real credentials, or production environments.
 
+## Current Platform
+
+The supported entry point is the installed `redteam` CLI. It provides typed
+configuration and schemas, live/cached inventory, a centralized scope policy,
+human authorization records, bounded adaptive assessments, isolated run
+artifacts, enterprise reports, model-planner benchmarks, and an optional
+authenticated loopback API. The older `ai_red_team_cli.py` and conversational
+assistant remain available as compatibility workflows.
+
+```bash
+./scripts/bootstrap_dev.sh
+source .venv/bin/activate
+
+redteam doctor
+redteam inventory --json --refresh
+redteam models --json
+redteam agents --json
+redteam services --json
+redteam targets
+redteam assess plan \
+  --kind python \
+  --target tool_agent \
+  --authorization "I own this local synthetic target and authorize bounded testing."
+redteam assess run \
+  --kind python \
+  --target tool_agent \
+  --authorization "I own this local synthetic target and authorize bounded testing." \
+  --category prompt_disclosure
+redteam runs list
+```
+
+Public targets are disabled by default. An active run always requires a human
+authorization statement. Model output cannot authorize a target, add a network
+destination, create a shell command, alter budgets, or bypass deterministic
+policy and detector decisions. Run artifacts are written under
+`reports/runs/<run-id>/` with restrictive local permissions and a SHA-256
+manifest.
+
+## Passive Inventory
+
+Phase 2 inventory is implemented as reusable typed adapters under
+`redteam_platform/inventory/`. A fresh inventory reads existing macOS/Linux
+listeners, enrolled Python targets, the agent registry, configured local
+service metadata, and configured Ollama endpoint identities. Docker and Kali
+readiness are optional. Individual adapter failures are returned as typed
+partial errors instead of discarding the snapshot.
+
+Ollama installed models and currently loaded models are separate states.
+Bounded live Ollama metadata requests require `redteam models --json --live`
+or `redteam inventory --json --live-ollama`. Kali SSH readiness similarly
+requires `redteam kali-status --json --live`. Inventory never scans a range,
+sends an assessment prompt, posts to `/invoke`, mutates Docker, or executes an
+arbitrary command.
+
+The standalone atomic cache is `reports/cache/inventory.json`. A typed snapshot
+can also be attached to a Phase 1 run as
+`reports/runs/<run-id>/inventory.json`, including its SHA-256 manifest record.
+
+The optional API requires `REDTEAM_API_TOKEN` and only accepts a loopback bind:
+
+```bash
+export REDTEAM_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+redteam api serve
+curl -H "Authorization: Bearer $REDTEAM_API_TOKEN" http://127.0.0.1:18150/inventory
+```
+
+See [Architecture](docs/ARCHITECTURE.md),
+[Passive discovery](docs/discovery.md),
+[Configuration](docs/configuration.md), [Security Model](docs/SECURITY.md),
+[Operations](docs/OPERATIONS.md), and the
+[Dexter Runbook](docs/DEXTER_RUNBOOK.md).
+
 ## Current Scanner
 
 The scanner discovers explicit Python targets under `targets/`, imports each
@@ -105,6 +177,8 @@ attack all local agents and generate an enterprise report
 run a comprehensive dynamic demo assessment with Kali
 run adaptive local red team against travel_agent with 3 payloads
 run the ThinkPad Kali assessment
+attack Dexter live at localhost:5173
+attack the web app at http://127.0.0.1:5173 with Kali
 full assessment with Kali and enterprise report
 ```
 
@@ -163,6 +237,31 @@ tunnel and adapter down. It does not expose the lab agents to the LAN.
 The URL attack command runs Kali recon and prompt-level probes directly against
 an authorized hosted agent URL. Use it only against services you own or have
 explicit permission to test.
+
+For local web apps such as Dexter running on your Mac, use the web-app mode.
+This creates a reverse SSH tunnel so Kali can scan your local loopback service,
+then runs bounded recon and non-destructive probes for SQL error exposure,
+reflected XSS, path traversal indicators, prompt injection against likely
+chat/agent endpoints, and secret/stacktrace leakage:
+
+```bash
+./scripts/redteam_chat.sh --message "attack Dexter live at localhost:5173"
+
+python3 ai_red_team_cli.py kali attack-url \
+  --url http://127.0.0.1:5173 \
+  --web-app \
+  --tunnel-local \
+  --remote-port 15173
+```
+
+The natural-language Dexter command scans both the Vite dashboard on `5173`
+and the Dexter API on `8000` when the API is reachable. The lower-level
+`attack-url` command scans exactly the URL you pass.
+
+The web-app path uses Kali tools including `nmap`, `whatweb`, `nikto`, and
+`sqlmap` when available. Natural-language Dexter runs write split artifacts
+such as `reports/kali_url_scan_frontend.json` and `reports/kali_url_scan_api.json`,
+plus the enterprise report/timeline artifacts.
 
 The Render blueprint in `render.yaml` requires an Ollama-compatible model
 endpoint through `OLLAMA_URL`; a default Render Python web service does not run
