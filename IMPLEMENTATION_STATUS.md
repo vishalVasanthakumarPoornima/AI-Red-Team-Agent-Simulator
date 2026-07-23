@@ -1,6 +1,76 @@
 # Implementation Status
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
+
+## Phase 3 status
+
+Phase 3 is complete. The supported CLI is now a modular Typer/Rich application
+with a terminal menu, full non-interactive commands, reusable presentation and
+query utilities, safe assessment orchestration, run/report browsing,
+configuration inspection, Kali readiness, diagnostics, JSON envelopes, and
+centralized exit codes.
+
+The suite contains 158 passing tests: the existing 125 Phase 1–2 tests and 33
+new Phase 3 tests. Normal tests require no Internet, Ollama, Docker daemon,
+Kali host, root privileges, public systems, or real interactive terminal.
+
+### Phase 3 capabilities
+
+- `redteam` opens the menu only when both input and output are terminals.
+  Non-interactive no-argument execution prints help and never hangs.
+- The menu displays cached inventory freshness, agent/model/listener counts,
+  wildcard exposure, Kali state, recent runs, and configuration warnings
+  without silently refreshing integrations.
+- `inventory`, `models`, `agents`, and `services` are nested command groups
+  with summary/show/list/filter operations. Legacy Phase 2 JSON commands keep
+  their original raw payloads.
+- `assess start` and the wizard expose only Python, compatible HTTP,
+  OpenAI-compatible, and Ollama adapters already supported by the application
+  service. Host, generic web, and Dexter expansion are visibly planned and
+  cannot create placeholder runs.
+- Scope validation and a human-written authorization statement are required
+  before execution. `--yes` never creates authorization, and public targets
+  still require a real interactive confirmation.
+- Run browsing tolerates corrupt, partial, and missing optional artifacts.
+  Authorization text is summarized, manifests are hash-checked, events can be
+  emitted as explicit JSON Lines, and artifact paths cannot escape a run.
+- Report browsing exposes only formats that already exist. Export sanitizes
+  text artifacts, rejects traversal, does not fabricate PDF/HTML, and refuses
+  overwrite without `--overwrite`.
+- Kali status is configuration-only by default. `kali check --live` is the
+  explicit fixed-script readiness path and never scans a target or starts a
+  tunnel.
+- `doctor` reports PASS/WARN/FAIL/SKIP results for runtime, dependencies,
+  configuration, paths, inventory cache, integrations, existing runs, artifact
+  writing, and terminal capabilities. `--strict` maps warnings to exit 8.
+- New data commands emit stable JSON envelopes with no ANSI sequences.
+  Expected errors are structured and traceback-free; debug tracebacks are
+  sanitized. Exit codes 0–9 and 130 are centralized.
+
+### Phase 3 modules
+
+- `redteam_platform/cli/app.py`, `context.py`, `errors.py`, `exit_codes.py`
+- `redteam_platform/cli/formatting.py`, `progress.py`, `prompts.py`, `queries.py`
+- `redteam_platform/cli/commands/{menu,inventory,assess,runs,kali,scope,config,doctor,help}.py`
+- `redteam_platform/run_browser.py`
+- `redteam_platform/diagnostics.py`
+- `redteam_platform/__main__.py`
+
+`redteam_platform/cli.py` remains a compatibility path while imports and the
+installed entry point resolve the modular `redteam_platform.cli` package.
+
+### Phase 3 boundaries
+
+Phase 3 does not implement the later Dexter assessment, generic host/web
+expansion, adaptive-engine expansion, enterprise report redesign, or FastAPI
+migration. Existing lower-level compatibility adapters remain in the
+repository, but the Phase 3 wizard does not advertise those later workflows as
+available.
+
+## Phase 2 checkpoint
+
+Phase 2 was checkpointed before Phase 3 as commit `50c61df` with all 125
+baseline tests passing.
 
 ## Phase 2 scope
 

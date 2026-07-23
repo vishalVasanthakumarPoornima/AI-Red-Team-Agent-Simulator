@@ -101,6 +101,16 @@ explicitly requests overwrite for the same active run.
 ## Safe commands
 
 ```bash
+redteam inventory summary
+redteam inventory show --loopback
+redteam inventory refresh
+redteam models list
+redteam models running
+redteam agents list
+redteam services list
+redteam services listeners
+
+# Phase 2 compatibility shapes
 redteam inventory --json
 redteam inventory --json --refresh
 redteam inventory --json --cached
@@ -109,6 +119,9 @@ redteam agents --json
 redteam services --json
 redteam kali-status --json
 ```
+
+The nested Phase 3 data commands return the documented JSON envelope. The five
+compatibility commands above deliberately keep the Phase 2 raw payload shape.
 
 Optional local checks:
 

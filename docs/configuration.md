@@ -1,12 +1,25 @@
 # Configuration
 
 `redteam_platform.settings.load_settings` applies configuration in this order:
-TOML, repository `.env`, process environment, then explicit CLI/programmatic
-overrides. Invalid values fail startup with field-specific messages. Secret
-values are never included by `sanitized_settings`.
+TOML, the selected environment file, process environment, then explicit
+CLI/programmatic overrides. `--config PATH` and `--env-file PATH` select the
+first two layers. Invalid values fail startup with field-specific messages.
+Secret values are never included by `sanitized_settings`.
 
 The checked-in examples use loopback-only, passive defaults:
 `.env.example` and `config.example.toml`.
+
+Use the offline inspection commands:
+
+```bash
+redteam config show
+redteam config validate
+redteam config paths
+```
+
+`config show` redacts secret values and SSH key paths. `config validate` does
+not contact integrations. `config paths` reports existence and writability for
+the selected config/environment files, inventory cache, reports, and log path.
 
 ## Phase 2 inventory settings
 

@@ -362,13 +362,16 @@ def _toml_values(path: Path) -> dict[str, Any]:
 def load_settings(
     config_path: str | Path | None = None,
     overrides: dict[str, Any] | None = None,
+    env_file: str | Path | None = None,
 ) -> Settings:
     """Load config file < .env < process environment < explicit overrides."""
 
     try:
         selected_path = Path(config_path).expanduser() if config_path else Settings().user_config
         merged: dict[str, Any] = _toml_values(selected_path)
-        dotenv = _dotenv_values(Path(".env"))
+        dotenv = _dotenv_values(
+            Path(env_file).expanduser() if env_file is not None else Path(".env")
+        )
         combined_env = {**dotenv, **os.environ}
         for env_name, field_name in ENV_FIELD_MAP.items():
             if env_name in combined_env:

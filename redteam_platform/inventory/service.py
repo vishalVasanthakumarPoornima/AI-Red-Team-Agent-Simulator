@@ -73,6 +73,7 @@ class InventoryService:
         refresh: bool = True,
         cached_only: bool = False,
         force_refresh: bool = False,
+        persist_cache: bool = True,
     ) -> InventorySnapshot:
         if cached_only:
             cached, error = self.cache.read(allow_stale=True)
@@ -257,7 +258,8 @@ class InventoryService:
             cached=False,
             stale=False,
         )
-        self.cache.write(snapshot, snapshot.refresh_mode)
+        if persist_cache:
+            self.cache.write(snapshot, snapshot.refresh_mode)
         return snapshot
 
     def refresh(self, include_docker: bool | None = None) -> InventorySnapshot:

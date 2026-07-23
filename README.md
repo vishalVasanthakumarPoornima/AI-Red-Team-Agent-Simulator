@@ -22,26 +22,34 @@ artifacts, enterprise reports, model-planner benchmarks, and an optional
 authenticated loopback API. The older `ai_red_team_cli.py` and conversational
 assistant remain available as compatibility workflows.
 
+Running `redteam` in a terminal opens the Phase 3 menu. In a pipe, CI job, or
+other non-interactive environment it prints help and never waits for input.
+`python -m redteam_platform` provides the same application.
+
 ```bash
 ./scripts/bootstrap_dev.sh
 source .venv/bin/activate
 
+redteam
 redteam doctor
-redteam inventory --json --refresh
-redteam models --json
-redteam agents --json
-redteam services --json
+redteam inventory refresh
+redteam inventory summary --json
+redteam models list
+redteam agents list
+redteam services list
 redteam targets
 redteam assess plan \
   --kind python \
   --target tool_agent \
   --authorization "I own this local synthetic target and authorize bounded testing."
-redteam assess run \
+redteam assess start \
   --kind python \
   --target tool_agent \
   --authorization "I own this local synthetic target and authorize bounded testing." \
   --category prompt_disclosure
 redteam runs list
+redteam reports list
+redteam scope validate http://127.0.0.1:18080
 ```
 
 Public targets are disabled by default. An active run always requires a human
@@ -50,6 +58,13 @@ destination, create a shell command, alter budgets, or bypass deterministic
 policy and detector decisions. Run artifacts are written under
 `reports/runs/<run-id>/` with restrictive local permissions and a SHA-256
 manifest.
+
+Every new data command accepts `--json` and emits a versioned envelope with
+`schema_version`, `command`, `success`, `data`, `warnings`, and `errors`.
+Legacy `inventory --json`, `models --json`, `agents --json`, `services --json`,
+and `kali-status --json` retain their Phase 2 payload shapes. See
+[CLI reference](docs/cli.md), [Getting started](docs/getting-started.md), and
+[Scope and authorization](docs/scope-and-authorization.md).
 
 ## Passive Inventory
 
@@ -79,7 +94,7 @@ redteam api serve
 curl -H "Authorization: Bearer $REDTEAM_API_TOKEN" http://127.0.0.1:18150/inventory
 ```
 
-See [Architecture](docs/ARCHITECTURE.md),
+See [CLI reference](docs/cli.md), [Architecture](docs/ARCHITECTURE.md),
 [Passive discovery](docs/discovery.md),
 [Configuration](docs/configuration.md), [Security Model](docs/SECURITY.md),
 [Operations](docs/OPERATIONS.md), and the
