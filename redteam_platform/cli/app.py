@@ -19,6 +19,7 @@ from redteam_platform.benchmark import benchmark_model
 from redteam_platform.cli.commands import assess as assess_commands
 from redteam_platform.cli.commands import config as config_commands
 from redteam_platform.cli.commands import doctor as doctor_commands
+from redteam_platform.cli.commands import dexter as dexter_commands
 from redteam_platform.cli.commands import help as help_commands
 from redteam_platform.cli.commands import inventory as inventory_commands
 from redteam_platform.cli.commands import kali as kali_commands
@@ -117,6 +118,7 @@ models_app = typer.Typer(help="Browse installed and running local models.", invo
 agents_app = typer.Typer(help="Browse enrolled and compatible AI agents.", invoke_without_command=True)
 services_app = typer.Typer(help="Browse listening services and ports.", invoke_without_command=True)
 assess_app = typer.Typer(help="Plan or run bounded authorized assessments.", invoke_without_command=True)
+dexter_app = typer.Typer(help="Discover, inspect, plan, and assess Dexter deployments.", invoke_without_command=True)
 runs_app = typer.Typer(help="Browse persisted run artifacts.")
 reports_app = typer.Typer(help="View and export existing report artifacts.")
 kali_app = typer.Typer(help="Inspect Kali readiness without scanning targets.")
@@ -126,6 +128,7 @@ help_app = typer.Typer(help="Read onboarding and safety topics.", invoke_without
 
 inventory_commands.register(app, inventory_app, models_app, agents_app, services_app)
 assess_commands.register(app, assess_app)
+dexter_commands.register(app, dexter_app)
 runs_commands.register(app, runs_app, reports_app)
 kali_commands.register(app, kali_app)
 scope_commands.register(app, scope_app)

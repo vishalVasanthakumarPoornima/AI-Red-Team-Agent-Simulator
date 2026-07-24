@@ -495,3 +495,29 @@ its current `httpx` test-client integration will move to `httpx2`.
 ## Phase 1 status
 
 Phase 1 acceptance criteria are implemented and covered by deterministic tests.
+
+## Phase 4 — First-class Dexter integration
+
+Implemented in `redteam_platform/dexter/`:
+
+- Versioned deployment, component, capability, readiness, plan, probe, result,
+  finding, evidence, coverage, Kali, and summary models.
+- Multiple configured deployments and conservative Phase 2 correlation for
+  repository targets, HTTP/FastAPI metadata, listeners, processes, Docker,
+  Ollama, and supporting services.
+- Passive readiness plus deterministic passive, standard, and deep-lab
+  profiles with visible ordered steps, fixed budgets, synthetic-only data, and
+  deep-lab interactive confirmation.
+- Fixed AI, API, fake-tool, synthetic memory, retrieval, service, rate-limit,
+  and optional registered Kali checks.
+- Typed deduplicated findings, explicit incomplete coverage, lifecycle
+  handling, Phase 1 run artifacts, and Markdown/JSON Dexter reports.
+- `redteam dexter discover|list|show|health|plan|assess`, interactive
+  selection, JSON envelopes, progress, and `assess --kind dexter` routing.
+- A disposable loopback fixture plus deterministic configuration, discovery,
+  readiness, planning, authorization, probe, evaluation, Kali, coverage,
+  artifact, report, CLI, and end-to-end tests.
+
+Phase 4 does not mark general host/web adapters, adaptive attack planning,
+global enterprise report redesign, or a full FastAPI migration as complete.
+Live Dexter, Ollama, Docker, and Kali checks remain opt-in.

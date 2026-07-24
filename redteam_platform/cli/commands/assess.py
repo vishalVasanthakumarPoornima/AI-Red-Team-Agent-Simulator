@@ -24,8 +24,8 @@ from redteam_platform.schemas import AssessmentBudget, AssessmentProfile
 from redteam_platform.service import ApplicationService
 
 
-SUPPORTED_KINDS = {"python", "http", "openai", "ollama"}
-PLANNED_KINDS = {"host", "web", "dexter"}
+SUPPORTED_KINDS = {"python", "http", "openai", "ollama", "dexter"}
+PLANNED_KINDS = {"host", "web"}
 DEFAULT_CATEGORIES = [
     name
     for name in PROBE_TEMPLATES
@@ -152,7 +152,7 @@ def run_wizard(state: CLIContext) -> None:
         "  3. Ollama endpoint\n"
         "  4. OpenAI-compatible local endpoint\n"
         "  5. Manual supported target\n"
-        "  6. Planned host/web/Dexter features (not available)\n"
+        "  6. First-class Dexter deployment\n"
         "  0. Cancel"
     )
     choice = select_number(state, "Target type", set("0123456"))
@@ -160,7 +160,9 @@ def run_wizard(state: CLIContext) -> None:
         state.console.print("Assessment cancelled before side effects.")
         return
     if choice == "6":
-        warning(state, "Host, web, and Dexter expansion is planned for a later phase and cannot create a run.")
+        from redteam_platform.cli.commands.dexter import run_wizard as run_dexter_wizard
+
+        run_dexter_wizard(state)
         return
     kind = {"1": "python", "2": "http", "3": "ollama", "4": "openai"}.get(choice)
     snapshot = InventoryService(state.settings).collect(
@@ -322,6 +324,52 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
                 ExitCode.SCOPE_OR_AUTHORIZATION_DENIED,
                 "missing_authorization",
             )
+        if kind.lower() == "dexter":
+            from redteam_platform.cli.commands.dexter import (
+                build_plan,
+                execute_assessment_command,
+                _render_plan,
+            )
+            from redteam_platform.dexter.models import DexterProfile
+
+            dexter_profile = DexterProfile(profile.value)
+            if plan_only:
+                dexter_target, dexter_readiness, dexter_plan = build_plan(
+                    state,
+                    target,
+                    profile=dexter_profile,
+                    include_kali=False,
+                    refresh=False,
+                )
+                if state.json_output or json_output:
+                    emit_envelope(
+                        state,
+                        "assess.plan",
+                        {
+                            "target": dexter_target,
+                            "readiness": dexter_readiness,
+                            "plan": dexter_plan,
+                        },
+                    )
+                else:
+                    _render_plan(
+                        state,
+                        dexter_target,
+                        dexter_readiness,
+                        dexter_plan,
+                    )
+                return
+            execute_assessment_command(
+                state,
+                dexter_id=target,
+                profile=dexter_profile,
+                authorization=authorization,
+                include_kali=False,
+                refresh=False,
+                yes=yes,
+                command="assess.start",
+            )
+            return
         request = _prepare(
             state,
             kind=kind,

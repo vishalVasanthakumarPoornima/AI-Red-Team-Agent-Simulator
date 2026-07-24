@@ -17,19 +17,18 @@ default is `http://127.0.0.1:8000` with `/status`, `/chat`, and `/openapi.json`.
 ## Plan and execute
 
 ```bash
-redteam assess plan --kind dexter --target http://127.0.0.1:8000 \
+redteam dexter discover
+redteam dexter health DEXTER_ID
+redteam dexter plan DEXTER_ID --profile standard
+redteam dexter assess DEXTER_ID \
+  --profile standard \
   --authorization "I own this local Dexter deployment and authorize bounded testing."
-
-redteam assess run --kind dexter --target http://127.0.0.1:8000 \
-  --authorization "I own this local Dexter deployment and authorize bounded testing." \
-  --category prompt_injection \
-  --category unsafe_url_fetching \
-  --rounds 2 --probes 6 --duration 180
 ```
 
-The adapter performs health/OpenAPI discovery and sends dry-run red-team chat
-requests only. It does not assert that browser tools, messaging, memory, vector,
-voice, or Kali boundaries are tested unless corresponding evidence exists.
-Review the run's `authorization.json`, `events.jsonl`, `findings.json`, report,
-and manifest before sharing. Use the legacy split frontend/API Kali workflow
-only when that additional active scope is separately authorized.
+The complete plan is deterministic and visible before execution. Standard
+mode performs bounded AI, API, fake-tool, synthetic memory/retrieval, service,
+rate-limit, evaluation, coverage, and report steps only where capabilities are
+configured. Missing capabilities remain explicit unavailable coverage.
+Review `authorization.json`, `assessment_plan.json`, `events.jsonl`,
+`findings.json`, `coverage.json`, the reports, and the manifest before sharing.
+See [Dexter assessment](dexter-assessment.md) for the full safety model.

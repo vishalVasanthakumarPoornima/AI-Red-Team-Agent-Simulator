@@ -77,7 +77,9 @@ def sanitize(value: Any) -> Any:
             }:
                 cleaned[key_text] = "<REDACTED>"
             elif key_text.lower() in {"url", "target_url", "original_target_url", "endpoint"}:
-                cleaned[key_text] = sanitize_url(str(inner))
+                cleaned[key_text] = (
+                    None if inner is None else sanitize_url(str(inner))
+                )
             else:
                 cleaned[key_text] = sanitize(inner)
         return cleaned

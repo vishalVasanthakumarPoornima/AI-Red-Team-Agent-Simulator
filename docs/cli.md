@@ -32,6 +32,7 @@ models [list|running|installed|show]
 agents [list|show|health]
 services [list|show|listeners]
 assess [start|plan|local-agent|python-target]
+dexter [discover|list|show|health|plan|assess]
 runs [list|show|events|artifacts]
 reports [list|show|export]
 kali [status|tools|check --live]
@@ -55,7 +56,32 @@ Kali SSH is never contacted unless `--live` is explicit.
 
 `assess start` is active. It requires the exact kind, target, category/profile,
 and a human authorization statement. The service normalizes and validates
-scope before execution. Planned host/web/Dexter expansion is not launchable.
+scope before execution. Host/web expansion remains planned; Dexter is a
+first-class Phase 4 target and is also accepted by `assess --kind dexter`.
+
+## Dexter commands
+
+```bash
+redteam dexter discover
+redteam dexter list --json
+redteam dexter show DEXTER_ID
+redteam dexter health DEXTER_ID
+redteam dexter plan DEXTER_ID --profile standard
+redteam dexter assess DEXTER_ID \
+  --profile standard \
+  --authorization "I own this local Dexter lab and authorize bounded testing." \
+  --yes
+```
+
+`dexter plan` creates no run. An active non-interactive assessment requires the
+exact ID, explicit profile, and human authorization statement; issuing that
+complete command is its confirmation boundary. `--yes` is only an interactive
+UI convenience and never supplies authorization. Deep-lab requires a real
+interactive confirmation and ignores `--yes`. Use `--include-kali` only for a
+configured authorized lab.
+
+Dexter overrides are group options before the subcommand, for example:
+`redteam dexter --endpoint http://127.0.0.1:8000 discover`.
 
 ## JSON contract
 

@@ -74,6 +74,13 @@ def normalize_error(exc: Exception) -> CLIError:
                 else "Verify the target exists and is currently supported."
             ),
         )
+    if isinstance(exc, LookupError):
+        return CLIError(
+            str(exc),
+            ExitCode.TARGET_UNAVAILABLE,
+            "target_unavailable",
+            "Run `redteam dexter discover` and use the exact stable ID.",
+        )
     if isinstance(exc, FileNotFoundError):
         return ArtifactCLIError(str(exc))
     if isinstance(exc, PermissionError):

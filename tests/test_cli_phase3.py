@@ -297,8 +297,13 @@ class ScopeAndAssessmentTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["command"], "assess.plan")
 
-    def test_planned_feature_cannot_launch(self):
-        with patch("redteam_platform.service.ApplicationService.run") as execute:
+    def test_dexter_routes_to_first_class_phase4_service(self):
+        with (
+            patch("redteam_platform.service.ApplicationService.run") as legacy_execute,
+            patch(
+                "redteam_platform.cli.commands.dexter.execute_assessment_command"
+            ) as dexter_execute,
+        ):
             result = self.runner.invoke(
                 app,
                 [
@@ -310,12 +315,13 @@ class ScopeAndAssessmentTests(unittest.TestCase):
                     "http://127.0.0.1:8000",
                     "--authorization",
                     "I own this local target and authorize bounded testing.",
+                    "--yes",
                     "--json",
                 ],
             )
-        self.assertEqual(result.exit_code, 5)
-        execute.assert_not_called()
-        self.assertIn("planned_feature_unavailable", result.stdout)
+        self.assertEqual(result.exit_code, 0, result.stdout)
+        legacy_execute.assert_not_called()
+        dexter_execute.assert_called_once()
 
     def test_denied_target_never_reaches_executor(self):
         with patch("redteam_platform.service.ApplicationService.run") as execute:

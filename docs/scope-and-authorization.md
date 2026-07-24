@@ -36,3 +36,11 @@ redirects outside the authorization record are denied.
 The wizard shows target metadata, exact scope, active/passive state, registered
 operations, and budgets before final confirmation. Denial or cancellation
 before that confirmation never reaches the executor and creates no run.
+
+Dexter discovery and readiness use passive decisions and GET-only checks. The
+complete plan validates every component scope before creating a run directory.
+Active standard execution requires a human statement and final confirmation.
+Deep-lab is limited to loopback or an explicitly allowed lab and requires a
+real interactive confirmation; `--yes` cannot enable it. Redirects are not
+automatically followed, and cross-host redirects or resolution changes fail
+closed.

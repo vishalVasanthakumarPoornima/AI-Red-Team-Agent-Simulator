@@ -114,3 +114,29 @@ credentials, query strings, API keys, and authenticated URL user information
 do not participate. Correlation preserves every underlying item and records a
 separate reason/confidence relationship rather than destructively collapsing
 uncertain identities.
+
+## Phase 4 Dexter application services
+
+The CLI calls `DexterDiscoveryService`, `DexterReadinessService`,
+`DexterPlanService`, and `DexterAssessmentService`. Business rules remain under
+`redteam_platform/dexter/`; handlers gather input and render typed results.
+Discovery reuses Phase 2 snapshots, while assessment reuses Phase 1 scope,
+authorization, schema, sanitization, and artifact APIs.
+
+```mermaid
+flowchart LR
+    CLI["Phase 3 CLI"] --> Discovery["DexterDiscoveryService"]
+    CLI --> Readiness["DexterReadinessService"]
+    CLI --> Plan["DexterPlanService"]
+    CLI --> Assessment["DexterAssessmentService"]
+    Discovery --> Inventory["Phase 2 inventory"]
+    Readiness --> Policy["Phase 1 ScopePolicy"]
+    Plan --> Typed["Versioned Dexter models"]
+    Assessment --> Policy
+    Assessment --> Probes["Registered deterministic probes"]
+    Assessment --> Artifacts["Phase 1 RunArtifacts"]
+```
+
+HTTP, inventory, Kali, readiness, clock, ID generation, cancellation, reporter,
+and artifact creation boundaries are injectable for deterministic tests. The
+local CLI path has no dependency on the optional FastAPI service.

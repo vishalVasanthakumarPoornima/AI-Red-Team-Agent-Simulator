@@ -21,20 +21,33 @@ class DexterSettings(BaseSettings):
     api_endpoint: str = "http://127.0.0.1:8000"
     health_path: str = "/status"
     chat_path: str = "/chat"
+    metadata_path: str = "/metadata"
     openapi_path: str = "/openapi.json"
+    authentication_reference: str | None = None
     ollama_endpoint: str | None = None
+    expected_model: str | None = None
     tool_endpoints: list[str] = Field(default_factory=list)
     memory_endpoint: str | None = None
     vector_endpoint: str | None = None
+    retrieval_endpoint: str | None = None
     voice_endpoints: list[str] = Field(default_factory=list)
+    docker_names: list[str] = Field(default_factory=list)
+    docker_labels: list[str] = Field(default_factory=list)
+    expected_ports: list[int] = Field(default_factory=lambda: [8000])
+    allowed_profiles: list[str] = Field(
+        default_factory=lambda: ["passive", "standard", "deep-lab"]
+    )
+    disposable_memory_namespace: bool = False
     authentication_mode: str = "none"
     requires_kali_tunnel: bool = True
+    kali_remote_port: int = Field(default=18000, ge=1024, le=65535)
 
     @field_validator(
         "api_endpoint",
         "ollama_endpoint",
         "memory_endpoint",
         "vector_endpoint",
+        "retrieval_endpoint",
         mode="before",
     )
     @classmethod
@@ -48,12 +61,44 @@ class DexterSettings(BaseSettings):
     def validate_url_lists(cls, values: list[str]) -> list[str]:
         return [_validated_http_url(value, "Dexter endpoint") for value in values]
 
-    @field_validator("health_path", "chat_path", "openapi_path")
+    @field_validator("health_path", "chat_path", "metadata_path", "openapi_path")
     @classmethod
     def validate_paths(cls, value: str) -> str:
         if not value.startswith("/") or "?" in value or "#" in value:
             raise ValueError("Dexter paths must start with '/' and cannot contain query strings or fragments")
         return value
+
+    @field_validator("expected_ports", mode="after")
+    @classmethod
+    def validate_expected_ports(cls, values: list[int]) -> list[int]:
+        ports: list[int] = []
+        for value in values:
+            port = int(value)
+            if not 1 <= port <= 65535:
+                raise ValueError("Dexter expected ports must be between 1 and 65535")
+            if port not in ports:
+                ports.append(port)
+        return ports
+
+    @field_validator("allowed_profiles", mode="after")
+    @classmethod
+    def validate_profiles(cls, values: list[str]) -> list[str]:
+        allowed = {"passive", "standard", "deep-lab"}
+        normalized = [str(value).strip().lower() for value in values]
+        invalid = sorted(set(normalized) - allowed)
+        if invalid:
+            raise ValueError("Unsupported Dexter profiles: " + ", ".join(invalid))
+        return list(dict.fromkeys(normalized))
+
+    @field_validator("authentication_reference")
+    @classmethod
+    def validate_auth_reference(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        reference = value.strip()
+        if not reference or any(marker in reference.lower() for marker in ("bearer ", "token=", "password=")):
+            raise ValueError("Dexter authentication_reference must be a non-secret reference name")
+        return reference
 
 
 class ConfigurationError(ValueError):
@@ -166,6 +211,7 @@ class Settings(BaseSettings):
     kali_ssh_host: str | None = None
     kali_ssh_key: Path | None = None
     dexter: DexterSettings = Field(default_factory=DexterSettings)
+    dexter_deployments: list[DexterSettings] = Field(default_factory=list)
 
     @field_validator(
         "allowed_cidrs",
@@ -335,6 +381,31 @@ ENV_FIELD_MAP = {
     "KALI_SSH_KEY": "kali_ssh_key",
 }
 
+DEXTER_ENV_MAP = {
+    "DEXTER_NAME": "name",
+    "DEXTER_API_ENDPOINT": "api_endpoint",
+    "DEXTER_HEALTH_PATH": "health_path",
+    "DEXTER_CHAT_PATH": "chat_path",
+    "DEXTER_METADATA_PATH": "metadata_path",
+    "DEXTER_OPENAPI_PATH": "openapi_path",
+    "DEXTER_AUTHENTICATION_MODE": "authentication_mode",
+    "DEXTER_AUTHENTICATION_REFERENCE": "authentication_reference",
+    "DEXTER_OLLAMA_ENDPOINT": "ollama_endpoint",
+    "DEXTER_EXPECTED_MODEL": "expected_model",
+    "DEXTER_TOOL_ENDPOINTS": "tool_endpoints",
+    "DEXTER_MEMORY_ENDPOINT": "memory_endpoint",
+    "DEXTER_VECTOR_ENDPOINT": "vector_endpoint",
+    "DEXTER_RETRIEVAL_ENDPOINT": "retrieval_endpoint",
+    "DEXTER_VOICE_ENDPOINTS": "voice_endpoints",
+    "DEXTER_DOCKER_NAMES": "docker_names",
+    "DEXTER_DOCKER_LABELS": "docker_labels",
+    "DEXTER_EXPECTED_PORTS": "expected_ports",
+    "DEXTER_ALLOWED_PROFILES": "allowed_profiles",
+    "DEXTER_DISPOSABLE_MEMORY_NAMESPACE": "disposable_memory_namespace",
+    "DEXTER_REQUIRES_KALI_TUNNEL": "requires_kali_tunnel",
+    "DEXTER_KALI_REMOTE_PORT": "kali_remote_port",
+}
+
 
 def _dotenv_values(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -376,6 +447,22 @@ def load_settings(
         for env_name, field_name in ENV_FIELD_MAP.items():
             if env_name in combined_env:
                 merged[field_name] = combined_env[env_name]
+        dexter_values = dict(merged.get("dexter") or {})
+        for env_name, field_name in DEXTER_ENV_MAP.items():
+            if env_name in combined_env:
+                value: Any = combined_env[env_name]
+                if field_name in {
+                    "tool_endpoints",
+                    "voice_endpoints",
+                    "docker_names",
+                    "docker_labels",
+                    "expected_ports",
+                    "allowed_profiles",
+                }:
+                    value = [part.strip() for part in value.split(",") if part.strip()]
+                dexter_values[field_name] = value
+        if dexter_values:
+            merged["dexter"] = dexter_values
         if overrides:
             merged.update({key: value for key, value in overrides.items() if value is not None})
         return Settings.model_validate(merged)

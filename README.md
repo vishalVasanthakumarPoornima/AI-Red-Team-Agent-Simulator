@@ -37,6 +37,10 @@ redteam inventory summary --json
 redteam models list
 redteam agents list
 redteam services list
+redteam dexter discover
+redteam dexter list
+redteam dexter health DEXTER_ID
+redteam dexter plan DEXTER_ID --profile standard
 redteam targets
 redteam assess plan \
   --kind python \
@@ -65,6 +69,29 @@ Legacy `inventory --json`, `models --json`, `agents --json`, `services --json`,
 and `kali-status --json` retain their Phase 2 payload shapes. See
 [CLI reference](docs/cli.md), [Getting started](docs/getting-started.md), and
 [Scope and authorization](docs/scope-and-authorization.md).
+
+## First-class Dexter assessment
+
+Phase 4 adds a typed Dexter package that correlates explicit configuration with
+Phase 2 inventory, displays component readiness, builds a complete deterministic
+passive/standard/deep-lab plan, and runs only registered bounded probes after
+human authorization and final confirmation.
+
+```bash
+redteam dexter discover
+redteam dexter plan DEXTER_ID --profile standard
+redteam dexter assess DEXTER_ID \
+  --profile standard \
+  --authorization "I own this local Dexter lab and authorize bounded testing."
+```
+
+Standard coverage includes AI prompt boundaries, conservative API behavior,
+fake/dry-run tool boundaries, synthetic memory/retrieval markers, service
+exposure, deterministic evaluation, typed findings, and explicit coverage.
+Kali is optional through `--include-kali`; absence becomes incomplete coverage.
+Every confirmed run writes isolated authorization, target, readiness, plan,
+events, evidence, findings, coverage, Markdown/JSON reports, and a hashed
+manifest. See [Dexter assessment](docs/dexter-assessment.md).
 
 ## Passive Inventory
 

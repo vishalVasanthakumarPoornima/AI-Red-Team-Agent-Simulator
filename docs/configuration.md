@@ -64,3 +64,38 @@ must be positive and within the bounds enforced by `Settings`.
 `OLLAMA_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` are legacy
 assessment-agent settings. They are distinct from the passive inventory
 settings above.
+
+## Dexter settings
+
+The `[redteam.dexter]` table defines the primary deployment. The settings
+system can also represent additional typed `dexter_deployments`.
+
+| Environment variable | TOML field | Purpose |
+| --- | --- | --- |
+| `DEXTER_NAME` | `name` | Deployment display name. |
+| `DEXTER_API_ENDPOINT` | `api_endpoint` | Main HTTP(S) base URL. |
+| `DEXTER_HEALTH_PATH` | `health_path` | GET-only readiness route. |
+| `DEXTER_CHAT_PATH` | `chat_path` | Registered invocation route. |
+| `DEXTER_METADATA_PATH` | `metadata_path` | Passive metadata route. |
+| `DEXTER_OPENAPI_PATH` | `openapi_path` | Passive OpenAPI route. |
+| `DEXTER_AUTHENTICATION_MODE` | `authentication_mode` | Declared authentication boundary. |
+| `DEXTER_AUTHENTICATION_REFERENCE` | `authentication_reference` | Non-secret reference name only. |
+| `DEXTER_OLLAMA_ENDPOINT` | `ollama_endpoint` | Associated local Ollama base URL. |
+| `DEXTER_EXPECTED_MODEL` | `expected_model` | Expected installed/loaded model. |
+| `DEXTER_TOOL_ENDPOINTS` | `tool_endpoints` | Comma-separated local tool service URLs. |
+| `DEXTER_MEMORY_ENDPOINT` | `memory_endpoint` | Optional memory service URL. |
+| `DEXTER_VECTOR_ENDPOINT` | `vector_endpoint` | Optional vector database URL. |
+| `DEXTER_RETRIEVAL_ENDPOINT` | `retrieval_endpoint` | Optional retrieval URL. |
+| `DEXTER_VOICE_ENDPOINTS` | `voice_endpoints` | Optional comma-separated voice URLs. |
+| `DEXTER_DOCKER_NAMES` | `docker_names` | Expected local container names/images. |
+| `DEXTER_DOCKER_LABELS` | `docker_labels` | Expected safe `key=value` labels. |
+| `DEXTER_EXPECTED_PORTS` | `expected_ports` | Ports used for deterministic correlation. |
+| `DEXTER_ALLOWED_PROFILES` | `allowed_profiles` | Allowed Phase 4 profiles. |
+| `DEXTER_DISPOSABLE_MEMORY_NAMESPACE` | `disposable_memory_namespace` | Permits synthetic writes only in a disposable namespace. |
+| `DEXTER_REQUIRES_KALI_TUNNEL` | `requires_kali_tunnel` | Requires an owned reverse tunnel for optional Kali. |
+| `DEXTER_KALI_REMOTE_PORT` | `kali_remote_port` | Fixed remote loopback tunnel port. |
+
+All endpoint URLs reject embedded credentials. Paths reject queries and
+fragments. The authentication reference is persisted, but the referenced
+secret is not. TOML is overridden by `.env`, then process environment, then
+explicit programmatic or Dexter group CLI overrides.
