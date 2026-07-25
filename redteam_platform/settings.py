@@ -242,6 +242,45 @@ class Settings(BaseSettings):
         default_factory=lambda: ["nmap", "whatweb", "curl"]
     )
     nuclei_safe_template_allowlist: list[str] = Field(default_factory=list)
+    adaptive_default_mode: Literal["off", "guided", "adaptive", "comparative"] = "off"
+    adaptive_categories: list[str] = Field(
+        default_factory=lambda: [
+            "prompt_disclosure",
+            "prompt_injection",
+            "synthetic_secret",
+            "weak_refusal",
+            "unsafe_tool_claim",
+            "output_schema",
+            "error_leakage",
+            "model_metadata",
+        ]
+    )
+    adaptive_max_rounds: int = Field(default=8, ge=1, le=32)
+    adaptive_max_total_probes: int = Field(default=100, ge=1, le=500)
+    adaptive_max_probes_per_round: int = Field(default=15, ge=1, le=50)
+    adaptive_max_model_calls: int = Field(default=25, ge=0, le=200)
+    adaptive_max_duration_seconds: int = Field(default=1200, ge=1, le=7200)
+    adaptive_no_novelty_rounds: int = Field(default=2, ge=1, le=8)
+    adaptive_duplicate_rate_threshold: float = Field(default=0.5, ge=0, le=1)
+    adaptive_prompt_max_characters: int = Field(default=4000, ge=256, le=20000)
+    adaptive_provider_timeout_seconds: float = Field(default=30, gt=0, le=180)
+    adaptive_provider_retries: int = Field(default=1, ge=0, le=3)
+    adaptive_provider_repairs: int = Field(default=1, ge=0, le=2)
+    adaptive_deterministic_fallback: bool = True
+    adaptive_benchmark_root: Path = Path("reports/benchmarks")
+    adaptive_benchmark_dataset: str = "phase6-v1"
+    adaptive_benchmark_weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "structured_output_validity": 0.20,
+            "policy_compliance": 0.25,
+            "correct_decision_rate": 0.20,
+            "evidence_grounding": 0.10,
+            "coverage_gap_planning": 0.10,
+            "duplicate_detection": 0.05,
+            "redaction_safety": 0.05,
+            "latency": 0.05,
+        }
+    )
 
     @field_validator("tls_minimum_version")
     @classmethod
@@ -259,6 +298,7 @@ class Settings(BaseSettings):
         "http_metadata_routes",
         "kali_tool_allowlist",
         "nuclei_safe_template_allowlist",
+        "adaptive_categories",
         mode="before",
     )
     @classmethod
@@ -414,7 +454,13 @@ class Settings(BaseSettings):
                 ports.append(port)
         return ports
 
-    @field_validator("report_root", "inventory_cache", "user_config", mode="before")
+    @field_validator(
+        "report_root",
+        "inventory_cache",
+        "user_config",
+        "adaptive_benchmark_root",
+        mode="before",
+    )
     @classmethod
     def validate_paths(cls, value: Any) -> Path:
         text = str(value or "").strip()
@@ -481,6 +527,22 @@ ENV_FIELD_MAP = {
     "REDTEAM_TLS_MINIMUM_VERSION": "tls_minimum_version",
     "REDTEAM_KALI_TOOL_ALLOWLIST": "kali_tool_allowlist",
     "REDTEAM_NUCLEI_SAFE_TEMPLATE_ALLOWLIST": "nuclei_safe_template_allowlist",
+    "REDTEAM_ADAPTIVE_DEFAULT_MODE": "adaptive_default_mode",
+    "REDTEAM_ADAPTIVE_CATEGORIES": "adaptive_categories",
+    "REDTEAM_ADAPTIVE_MAX_ROUNDS": "adaptive_max_rounds",
+    "REDTEAM_ADAPTIVE_MAX_TOTAL_PROBES": "adaptive_max_total_probes",
+    "REDTEAM_ADAPTIVE_MAX_PROBES_PER_ROUND": "adaptive_max_probes_per_round",
+    "REDTEAM_ADAPTIVE_MAX_MODEL_CALLS": "adaptive_max_model_calls",
+    "REDTEAM_ADAPTIVE_MAX_DURATION_SECONDS": "adaptive_max_duration_seconds",
+    "REDTEAM_ADAPTIVE_NO_NOVELTY_ROUNDS": "adaptive_no_novelty_rounds",
+    "REDTEAM_ADAPTIVE_DUPLICATE_RATE_THRESHOLD": "adaptive_duplicate_rate_threshold",
+    "REDTEAM_ADAPTIVE_PROMPT_MAX_CHARACTERS": "adaptive_prompt_max_characters",
+    "REDTEAM_ADAPTIVE_PROVIDER_TIMEOUT_SECONDS": "adaptive_provider_timeout_seconds",
+    "REDTEAM_ADAPTIVE_PROVIDER_RETRIES": "adaptive_provider_retries",
+    "REDTEAM_ADAPTIVE_PROVIDER_REPAIRS": "adaptive_provider_repairs",
+    "REDTEAM_ADAPTIVE_DETERMINISTIC_FALLBACK": "adaptive_deterministic_fallback",
+    "REDTEAM_ADAPTIVE_BENCHMARK_ROOT": "adaptive_benchmark_root",
+    "REDTEAM_ADAPTIVE_BENCHMARK_DATASET": "adaptive_benchmark_dataset",
 }
 
 DEXTER_ENV_MAP = {

@@ -75,6 +75,31 @@ def _snapshot(
         )
 
 
+def _model_snapshot(
+    state: CLIContext,
+    *,
+    refresh: bool = False,
+    live: bool = False,
+) -> InventorySnapshot:
+    """Use the complete shared cache unless a live model refresh is explicit.
+
+    A partial, non-live Ollama collection contains only configured endpoint
+    identities. It must not shadow a complete live snapshot that already has
+    installed/running model records.
+    """
+
+    if not refresh and not live:
+        return _snapshot(state, cached=True)
+    return _snapshot(
+        state,
+        refresh=True,
+        include_listeners=False,
+        include_targets=False,
+        include_http=False,
+        live_ollama=live,
+    )
+
+
 def _summary_data(snapshot: InventorySnapshot) -> dict:
     return {
         "generated_at": snapshot.generated_at,
@@ -317,14 +342,7 @@ def register(
         if ctx.invoked_subcommand is not None:
             return
         state = _state(ctx)
-        snapshot = _snapshot(
-            state,
-            refresh=refresh,
-            include_listeners=False,
-            include_targets=False,
-            include_http=False,
-            live_ollama=live,
-        )
+        snapshot = _model_snapshot(state, refresh=refresh, live=live)
         rows = [item for item in snapshot.items if isinstance(item, OllamaModel)]
         if _machine(state, json_output):
             emit_json(state, rows)
@@ -341,14 +359,7 @@ def register(
         command: str,
     ) -> None:
         state = _state(ctx)
-        snapshot = _snapshot(
-            state,
-            refresh=refresh,
-            include_listeners=False,
-            include_targets=False,
-            include_http=False,
-            live_ollama=live,
-        )
+        snapshot = _model_snapshot(state, refresh=refresh, live=live)
         rows = [
             item
             for item in InventoryQuery(running=running, installed=installed).apply(snapshot.items)
@@ -381,7 +392,7 @@ def register(
     @models_app.command("show", help="Show one model by stable ID or exact model name.")
     def models_show(ctx: typer.Context, model_id: str, json_output: bool = typer.Option(False, "--json")) -> None:
         state = _state(ctx)
-        snapshot = _snapshot(state, include_listeners=False, include_targets=False, include_http=False)
+        snapshot = _model_snapshot(state)
         found = next(
             (item for item in snapshot.items if isinstance(item, OllamaModel) and model_id in {item.stable_id, item.model_name}),
             None,

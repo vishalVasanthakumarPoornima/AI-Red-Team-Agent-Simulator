@@ -1,5 +1,29 @@
 # AI Agent Red Team Simulator
 
+## Phase 6 bounded adaptive assessments
+
+Phase 6 adds policy-controlled adaptive planning and local model benchmarking
+without weakening the Phase 5 target, authorization, tool, or deterministic
+evaluation boundaries.
+
+```bash
+.venv/bin/redteam adaptive status
+.venv/bin/redteam adaptive plan tool_agent --kind python --adaptive-mode guided
+.venv/bin/redteam models benchmark-list
+.venv/bin/redteam models recommend
+```
+
+Modes are `off`, `guided`, `adaptive`, and `comparative`. Models are untrusted
+proposal sources: they can select registered Phase 5 templates and suggest
+safe textual mutations, but cannot change target scope, authorization, ports,
+paths, tools, operations, budgets, credentials, findings, or detector results.
+Adaptive rounds, rejected proposals, novelty, stop decisions, and role
+assignments are persisted inside the Phase 5 run. Model benchmarks use a
+separate `reports/benchmarks/` artifact tree. See
+[adaptive assessment](docs/adaptive-assessment.md),
+[model selection](docs/model-selection.md), and
+[model benchmarking](docs/model-benchmarking.md).
+
 ## Phase 5 unified local assessments
 
 The `redteam` CLI resolves typed targets and runs complete deterministic plans
@@ -60,6 +84,10 @@ redteam inventory summary --json
 redteam models list
 redteam agents list
 redteam services list
+redteam adaptive status
+redteam adaptive models
+redteam models benchmark-list
+redteam models recommend
 redteam dexter discover
 redteam dexter list
 redteam dexter health DEXTER_ID

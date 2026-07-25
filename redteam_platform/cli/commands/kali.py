@@ -2,21 +2,96 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import tempfile
+from pathlib import Path
 
 import typer
 
+from redteam_platform.artifacts import sanitize
 from redteam_platform.cli.context import CLIContext
 from redteam_platform.cli.formatting import data_table, details_table, emit_envelope, emit_json, empty, title, warning
 from redteam_platform.inventory.kali import KaliDiscovery
-from redteam_platform.inventory.models import KaliReadiness
+from redteam_platform.inventory.models import DiscoveryError, KaliReadiness
+from redteam_platform.schemas import SCHEMA_VERSION, utc_now
+
+
+def _readiness_cache_path(state: CLIContext) -> Path:
+    return Path(state.settings.inventory_cache).with_name("kali-readiness.json")
+
+
+def _write_readiness_cache(
+    state: CLIContext,
+    rows: list[KaliReadiness],
+    errors: list[DiscoveryError],
+) -> None:
+    path = _readiness_cache_path(state)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = sanitize(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "generated_at": utc_now(),
+            "rows": [row.model_dump(mode="json") for row in rows],
+            "errors": [error.model_dump(mode="json") for error in errors],
+        }
+    )
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, default=str)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _read_readiness_cache(
+    state: CLIContext,
+) -> tuple[list[KaliReadiness], list[DiscoveryError]] | None:
+    configured_alias = state.settings.kali_ssh_host
+    if not configured_alias:
+        return None
+    path = _readiness_cache_path(state)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != SCHEMA_VERSION:
+            return None
+        rows = [
+            KaliReadiness.model_validate(row) for row in payload.get("rows", [])
+        ]
+        if not rows or any(row.ssh_alias != configured_alias for row in rows):
+            return None
+        return (
+            rows,
+            [DiscoveryError.model_validate(error) for error in payload.get("errors", [])],
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def _collect(state: CLIContext, live: bool) -> tuple[list[KaliReadiness], list]:
+    if not live:
+        cached = _read_readiness_cache(state)
+        if cached is not None:
+            return cached
     settings = state.settings.model_copy(
         update={"include_kali_readiness": True, "kali_live_check": live}
     )
     rows, errors = KaliDiscovery(settings).collect(live=live)
+    if live:
+        _write_readiness_cache(state, rows, errors)
     return rows, errors
 
 

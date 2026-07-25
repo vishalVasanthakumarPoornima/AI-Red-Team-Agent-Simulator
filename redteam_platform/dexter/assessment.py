@@ -273,9 +273,6 @@ class DexterAssessmentService:
                     and not capability_map.get(step.required_capability, False)
                 ):
                     step_status[step.step_id] = DexterStepStatus.UNAVAILABLE
-                    errors.append(
-                        f"{step.step_id}: capability {step.required_capability} unavailable"
-                    )
                     emit(step.phase, step.name, "unavailable")
                     continue
                 emit(step.phase, step.name, "running")

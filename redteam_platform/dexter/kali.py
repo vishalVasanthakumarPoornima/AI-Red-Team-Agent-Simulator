@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from collections.abc import Callable
 from urllib.parse import urlparse
 
@@ -167,33 +168,52 @@ class DexterKaliService:
                     int(self.settings.kali_readiness_timeout),
                     str(self.settings.kali_ssh_key) if self.settings.kali_ssh_key else None,
                 )
+                results.append(
+                    {
+                        "tool": "registered-reverse-tunnel",
+                        "status": "started",
+                        "tracked": True,
+                        "remote_binding": f"127.0.0.1:{remote_port}",
+                        "local_destination": f"127.0.0.1:{local_port}",
+                    }
+                )
                 effective_host = "127.0.0.1"
                 effective_port = remote_port
-                health_command = self._ssh_prefix(plan.ssh_alias) + [
-                    "--",
-                    "curl",
-                    "--silent",
-                    "--show-error",
-                    "--fail",
-                    "--max-time",
-                    "10",
-                    f"http://127.0.0.1:{remote_port}{urlparse(target.health_endpoint).path or '/'}",
-                ]
-                health = self.runner(
-                    health_command,
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    check=False,
+                health = self._wait_for_tunnel(
+                    plan.ssh_alias,
+                    remote_port,
+                    urlparse(target.health_endpoint).path or "/",
+                    tunnel,
                 )
                 if health.returncode != 0:
-                    return [
+                    results.append(
                         {
+                            "tool": "registered-tunnel-health",
                             "status": "unavailable",
                             "reason": "Kali tunnel health verification failed.",
                             "returncode": health.returncode,
                         }
-                    ]
+                    )
+                    return results
+                results.append(
+                    {
+                        "tool": "registered-tunnel-health",
+                        "status": "complete",
+                        "returncode": 0,
+                    }
+                )
+                openapi = self._remote_curl(
+                    plan.ssh_alias,
+                    remote_port,
+                    urlparse(target.openapi_endpoint).path or "/openapi.json",
+                )
+                results.append(
+                    {
+                        "tool": "registered-tunnel-openapi",
+                        "status": "complete" if openapi.returncode == 0 else "error",
+                        "returncode": openapi.returncode,
+                    }
+                )
             base_url = f"http://{effective_host}:{effective_port}"
             for tool in selected[:3]:
                 remote_args = self._tool_args(tool, effective_host, effective_port, base_url)
@@ -220,7 +240,58 @@ class DexterKaliService:
                     results.append({"tool": tool, "status": "timeout", "returncode": 124})
         finally:
             self.tunnel_stopper(tunnel)
+            if tunnel is not None:
+                results.append(
+                    {
+                        "tool": "registered-reverse-tunnel-cleanup",
+                        "status": "complete",
+                        "tracked": True,
+                        "process_running": tunnel.poll() is None,
+                    }
+                )
         return results
+
+    def _remote_curl(
+        self,
+        alias: str,
+        port: int,
+        path: str,
+    ) -> subprocess.CompletedProcess:
+        command = self._ssh_prefix(alias) + [
+            "--",
+            "curl",
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--max-time",
+            "10",
+            f"http://127.0.0.1:{port}{path}",
+        ]
+        return self.runner(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+
+    def _wait_for_tunnel(
+        self,
+        alias: str,
+        port: int,
+        path: str,
+        tunnel: subprocess.Popen,
+    ) -> subprocess.CompletedProcess:
+        last = subprocess.CompletedProcess([], 255, "", "tunnel unavailable")
+        for attempt in range(5):
+            if tunnel.poll() is not None:
+                break
+            last = self._remote_curl(alias, port, path)
+            if last.returncode == 0:
+                return last
+            if attempt < 4:
+                time.sleep(0.25)
+        return last
 
     def _ssh_prefix(self, alias: str) -> list[str]:
         command = [

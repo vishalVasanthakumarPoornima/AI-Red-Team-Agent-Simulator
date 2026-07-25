@@ -58,6 +58,8 @@ def sanitize_url(value: str) -> str:
 
 
 def sanitize(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return sanitize(value.model_dump(mode="json"))
     if isinstance(value, str):
         text = redact_configured_secrets(value)
         text = SENSITIVE_HEADER_RE.sub(lambda match: f"{match.group(1)}: <REDACTED>", text)

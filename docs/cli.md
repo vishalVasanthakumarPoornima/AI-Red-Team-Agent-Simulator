@@ -8,6 +8,10 @@ redteam targets parse|resolve|show|capabilities|health TARGET
 redteam assess plan TARGET
 redteam assess run TARGET
 redteam assess python|agent|ollama|host|web TARGET
+redteam adaptive status|models
+redteam adaptive plan|run TARGET
+redteam adaptive resume|stop RUN_ID
+redteam models benchmark [MODEL]|recommend|benchmark-list|benchmark-show
 ```
 
 `targets parse` is network-free. `assess plan` has no run side effects.
@@ -46,10 +50,11 @@ requires explicit options instead of prompting.
 ```text
 menu
 inventory [refresh|show|summary]
-models [list|running|installed|show]
+models [list|running|installed|show|benchmark|recommend|benchmark-list|benchmark-show]
 agents [list|show|health]
 services [list|show|listeners]
 assess [start|plan|local-agent|python-target]
+adaptive [status|models|plan|run|resume|stop]
 dexter [discover|list|show|health|plan|assess]
 runs [list|show|events|artifacts]
 reports [list|show|export]
@@ -64,6 +69,25 @@ version
 Compatibility commands remain available: `inventory --json`, `models --json`,
 `agents --json`, `services --json`, `kali-status --json`, `targets`,
 `assess run`, `model benchmark`, and `api serve`.
+
+## Adaptive commands
+
+`adaptive plan` is side-effect free and does not require authorization.
+`adaptive run` first executes the Phase 5/Dexter baseline, then records bounded
+rounds inside the same run directory. `adaptive resume` requires fresh human
+authorization and verifies manifest, target, scope, adapter, model
+availability, counters, and prior prompt hashes. `adaptive stop` persists a
+human stop request.
+
+The four modes are `off`, `guided`, `adaptive`, and `comparative`. Use
+`--planner-model`, `--mutator-model`, `--summarizer-model`,
+`--reviewer-model`, `--fallback-model`, and `--allow-fallback` for explicit
+role selection. Round, probe, model-call, and duration flags can only reduce or
+select within validated hard bounds. `--yes` cannot enable or confirm adaptive
+or deep-lab execution.
+
+`assess plan` and `assess run` accept `--adaptive-mode` for integrated use.
+The compatibility-safe default is `off`.
 
 ## Passive and active behavior
 

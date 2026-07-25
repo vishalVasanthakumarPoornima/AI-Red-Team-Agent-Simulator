@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -117,14 +118,53 @@ def register(root: typer.Typer, runs_app: typer.Typer, reports_app: typer.Typer)
                 )
             )
 
-    @runs_app.command("events", help="Display persisted lifecycle events. Offline.")
-    def events(ctx: typer.Context, run_id: str, json_lines: bool = typer.Option(False, "--json-lines"), json_output: bool = typer.Option(False, "--json")) -> None:
+    @runs_app.command("events", help="Display persisted lifecycle events; --follow polls sanitized artifacts only.")
+    def events(
+        ctx: typer.Context,
+        run_id: str,
+        json_lines: bool = typer.Option(False, "--json-lines"),
+        follow: bool = typer.Option(False, "--follow"),
+        poll_interval: float = typer.Option(0.5, "--poll-interval", min=0.1, max=10.0),
+        timeout: int = typer.Option(600, "--timeout", min=0, max=7200),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
         state, browser = _browser(ctx)
         _json(state, json_output or json_lines)
+        if follow:
+            deadline = time.monotonic() + timeout
+            seen = 0
+            run_dir = Path(state.settings.report_root).expanduser().resolve() / run_id
+            while True:
+                rows = browser.events(run_id)
+                for row in rows[seen:]:
+                    if json_lines or state.json_output:
+                        typer.echo(json.dumps(row, separators=(",", ":")))
+                    else:
+                        state.console.print(
+                            f"{row.get('sequence')} {row.get('phase')} "
+                            f"{row.get('action')} {row.get('status')}"
+                        )
+                seen = len(rows)
+                adaptive_state = run_dir / "adaptive_state.json"
+                if adaptive_state.is_file():
+                    try:
+                        status = json.loads(
+                            adaptive_state.read_text(encoding="utf-8")
+                        ).get("status")
+                    except (OSError, json.JSONDecodeError):
+                        status = None
+                    if status in {"complete", "failed", "cancelled"}:
+                        break
+                elif (run_dir / "manifest.json").is_file():
+                    break
+                if timeout == 0 or time.monotonic() >= deadline:
+                    break
+                time.sleep(poll_interval)
+            return
         rows = browser.events(run_id)
         if json_lines:
             for row in rows:
-                state.console.print(json.dumps(row, separators=(",", ":")))
+                typer.echo(json.dumps(row, separators=(",", ":")))
         elif state.json_output or json_output:
             emit_envelope(state, "runs.events", rows)
         else:

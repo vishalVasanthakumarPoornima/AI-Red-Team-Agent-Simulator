@@ -7,6 +7,8 @@ from typing import Optional
 import typer
 
 from redteam_platform.adaptive import PROBE_TEMPLATES
+from redteam_platform.adaptive_engine.models import AdaptiveMode, ModelRole
+from redteam_platform.adaptive_engine.service import AdaptiveAssessmentService
 from redteam_platform.cli.context import CLIContext
 from redteam_platform.cli.errors import CLIError, NonInteractivePromptError
 from redteam_platform.cli.exit_codes import ExitCode
@@ -587,10 +589,72 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
         port: Optional[list[int]] = typer.Option(None, "--port"),
         path: Optional[list[str]] = typer.Option(None, "--path"),
         include_kali: bool = typer.Option(False, "--include-kali"),
+        adaptive_mode: AdaptiveMode = typer.Option(AdaptiveMode.OFF, "--adaptive-mode"),
+        mutator_model: Optional[str] = typer.Option(None, "--mutator-model"),
+        summarizer_model: Optional[str] = typer.Option(None, "--summarizer-model"),
+        reviewer_model: Optional[str] = typer.Option(None, "--reviewer-model"),
+        fallback_model: Optional[str] = typer.Option(None, "--fallback-model"),
+        allow_fallback: bool = typer.Option(False, "--allow-fallback"),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state = _state(ctx)
         state.json_output = state.json_output or json_output
+        if adaptive_mode != AdaptiveMode.OFF:
+            selected_target = target_arg or target
+            if not selected_target:
+                raise CLIError("Missing target.", ExitCode.INVALID_USAGE, "missing_target")
+            roles = {
+                str(role): value
+                for role, value in (
+                    (ModelRole.PLANNER, planner_model),
+                    (ModelRole.MUTATOR, mutator_model),
+                    (ModelRole.SUMMARIZER, summarizer_model),
+                    (ModelRole.REVIEWER, reviewer_model),
+                )
+                if value
+            }
+            payload = AdaptiveAssessmentService(state.settings).plan(
+                selected_target,
+                mode=adaptive_mode,
+                profile=profile,
+                kind_hint=KIND_HINTS.get(kind or ""),
+                target_model=model or target_model,
+                role_models=roles,
+                fallback_model=fallback_model,
+                allow_fallback=allow_fallback,
+                budget_overrides={
+                    "max_rounds": rounds,
+                    "max_total_probes": probes,
+                    "max_probes_per_round": min(15, probes),
+                    "max_model_calls": model_calls,
+                    "max_duration_seconds": min(duration, 7200),
+                },
+            )
+            if state.json_output:
+                emit_envelope(state, "assess.plan", payload)
+            else:
+                state.console.print(
+                    details_table(
+                        "Adaptive plan",
+                        payload["configuration"].model_dump(mode="json").items(),
+                    )
+                )
+                state.console.print(
+                    data_table(
+                        "Round-one proposals",
+                        ["Template", "Category", "Hypothesis", "Requests"],
+                        [
+                            (
+                                row.template_id,
+                                row.category,
+                                row.hypothesis_id,
+                                row.request_count,
+                            )
+                            for row in payload["proposals"]
+                        ],
+                    )
+                )
+            return
         if target_arg:
             _unified_plan(
                 state,
@@ -658,10 +722,74 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
         port: Optional[list[int]] = typer.Option(None, "--port"),
         path: Optional[list[str]] = typer.Option(None, "--path"),
         include_kali: bool = typer.Option(False, "--include-kali"),
+        adaptive_mode: AdaptiveMode = typer.Option(AdaptiveMode.OFF, "--adaptive-mode"),
+        mutator_model: Optional[str] = typer.Option(None, "--mutator-model"),
+        summarizer_model: Optional[str] = typer.Option(None, "--summarizer-model"),
+        reviewer_model: Optional[str] = typer.Option(None, "--reviewer-model"),
+        fallback_model: Optional[str] = typer.Option(None, "--fallback-model"),
+        allow_fallback: bool = typer.Option(False, "--allow-fallback"),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state = _state(ctx)
         state.json_output = state.json_output or json_output
+        if adaptive_mode != AdaptiveMode.OFF:
+            selected_target = target_arg or target
+            if not selected_target:
+                raise CLIError("Missing target.", ExitCode.INVALID_USAGE, "missing_target")
+            if not authorization:
+                raise CLIError(
+                    "Missing required --authorization.",
+                    ExitCode.SCOPE_OR_AUTHORIZATION_DENIED,
+                    "missing_authorization",
+                )
+            if yes or state.assume_yes:
+                raise CLIError(
+                    "--yes cannot enable or confirm adaptive execution.",
+                    ExitCode.INVALID_USAGE,
+                    "adaptive_yes_denied",
+                )
+            roles = {
+                str(role): value
+                for role, value in (
+                    (ModelRole.PLANNER, planner_model),
+                    (ModelRole.MUTATOR, mutator_model),
+                    (ModelRole.SUMMARIZER, summarizer_model),
+                    (ModelRole.REVIEWER, reviewer_model),
+                )
+                if value
+            }
+            with operation(state, "Running bounded adaptive assessment…"):
+                payload = AdaptiveAssessmentService(state.settings).run(
+                    selected_target,
+                    authorization=authorization,
+                    mode=adaptive_mode,
+                    profile=profile,
+                    kind_hint=KIND_HINTS.get(kind or ""),
+                    target_model=model or target_model,
+                    role_models=roles,
+                    fallback_model=fallback_model,
+                    allow_fallback=allow_fallback,
+                    budget_overrides={
+                        "max_rounds": rounds,
+                        "max_total_probes": probes,
+                        "max_probes_per_round": min(15, probes),
+                        "max_model_calls": model_calls,
+                        "max_duration_seconds": min(duration, 7200),
+                    },
+                    public_mode=public,
+                    interactive_confirmation=state.interactive,
+                )
+            if state.json_output:
+                emit_envelope(state, "assess.run", payload)
+            else:
+                state.console.print(
+                    details_table(
+                        "Adaptive summary",
+                        payload["summary"].model_dump(mode="json").items(),
+                    )
+                )
+                state.console.print(details_table("Artifacts", payload["artifacts"].items()))
+            return
         if target_arg:
             _unified_run(
                 state,

@@ -54,3 +54,22 @@ Deep-lab is limited to loopback or an explicitly allowed lab and requires a
 real interactive confirmation; `--yes` cannot enable it. Redirects are not
 automatically followed, and cross-host redirects or resolution changes fail
 closed.
+
+## Adaptive enforcement
+
+Phase 6 planning receives only stable target identity, target kind, declared
+capability names, registered categories/templates, evidence identifiers,
+coverage gaps, prior prompt hashes, budgets, and immutable policy reminders.
+It does not receive authorization text, credentials, destination URLs, local
+paths, tool arguments, or raw evidence bodies.
+
+Every model proposal is revalidated against the original human authorization,
+normalized target, adapter capabilities, typed template registry, operation,
+tool, prompt/request limits, mutation policy, and prior fingerprints. Attempts
+to introduce URLs, shell commands, real-secret shapes, local paths,
+destructive/exfiltration requests, unregistered tools, ports, paths, or
+authorization are persisted as rejected proposals and never executed.
+
+Resume requires a fresh human statement and refuses manifest, target, adapter,
+or normalized-scope drift. Model output cannot mark an error as a pass, create
+a finding, or overrule a deterministic stop decision.

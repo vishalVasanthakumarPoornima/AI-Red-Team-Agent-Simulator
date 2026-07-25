@@ -359,7 +359,11 @@ class TargetResolver:
             related_inventory_ids=sorted(
                 set(target.listener_ids + target.container_ids)
             ),
-            safe_metadata={"dexter_deployment_type": target.deployment_type},
+            safe_metadata={
+                "dexter_deployment_type": target.deployment_type,
+                "request_field": "message",
+                "response_field": "response",
+            },
         )
 
     def _manual(self, target_input: TargetInput) -> TargetDescriptor | None:

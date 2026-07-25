@@ -17,6 +17,7 @@ from redteam_platform import __version__
 from redteam_platform.artifacts import sanitize
 from redteam_platform.benchmark import benchmark_model
 from redteam_platform.cli.commands import assess as assess_commands
+from redteam_platform.cli.commands import adaptive as adaptive_commands
 from redteam_platform.cli.commands import config as config_commands
 from redteam_platform.cli.commands import doctor as doctor_commands
 from redteam_platform.cli.commands import dexter as dexter_commands
@@ -24,6 +25,7 @@ from redteam_platform.cli.commands import help as help_commands
 from redteam_platform.cli.commands import inventory as inventory_commands
 from redteam_platform.cli.commands import kali as kali_commands
 from redteam_platform.cli.commands import menu as menu_commands
+from redteam_platform.cli.commands import model_benchmark as model_benchmark_commands
 from redteam_platform.cli.commands import runs as runs_commands
 from redteam_platform.cli.commands import scope as scope_commands
 from redteam_platform.cli.commands import targets as targets_commands
@@ -127,8 +129,14 @@ kali_app = typer.Typer(help="Inspect Kali readiness without scanning targets.")
 scope_app = typer.Typer(help="Inspect and validate scope policy.")
 config_app = typer.Typer(help="Inspect and validate non-secret configuration.")
 help_app = typer.Typer(help="Read onboarding and safety topics.", invoke_without_command=True)
+adaptive_app = typer.Typer(
+    help="Plan, run, resume, and stop bounded adaptive assessments.",
+    invoke_without_command=True,
+)
 
 inventory_commands.register(app, inventory_app, models_app, agents_app, services_app)
+model_benchmark_commands.register(models_app)
+adaptive_commands.register(app, adaptive_app)
 targets_commands.register(app, targets_app)
 assess_commands.register(app, assess_app)
 dexter_commands.register(app, dexter_app)

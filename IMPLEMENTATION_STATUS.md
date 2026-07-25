@@ -1,6 +1,37 @@
 # Implementation Status
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
+
+## Phase 6 status
+
+Phase 6 is implemented as a bounded adaptive assessment and local-model
+benchmarking layer. It extends Phase 5 runs without changing their target,
+authorization, registered-tool, deterministic-evaluator, or scope-policy
+authority.
+
+- `redteam_platform/adaptive_engine` provides versioned configuration, roles,
+  provider records, hypotheses, registered templates, safe mutations, strict
+  proposal validation, Phase 5 execution, deterministic novelty/coverage,
+  stopping, durable lifecycle/resume/cancellation, and adaptive artifacts.
+- Modes are `off`, `guided`, `adaptive`, and `comparative`. Passive profiles
+  cannot run adaptive probes; standard is conservative; deep-lab requires
+  real interactive confirmation. Generic host and web targets stay
+  deterministic.
+- Ollama discovery is reused from Phase 2. The provider uses explicit model
+  roles, schema-constrained bounded requests, sanitized invalid-output
+  persistence, and limited retry/repair. It never pulls or changes models.
+- `redteam adaptive` exposes status, models, plan, run, resume, and stop.
+  `redteam models` adds benchmark, recommendation, list, and show commands.
+  `assess plan/run --adaptive-mode` integrates the new path while defaulting to
+  `off`.
+- The versioned `phase6-v1` synthetic benchmark records individual transparent
+  metrics, visible weights, role-specific evidence-based recommendations, and
+  separate `reports/benchmarks/<id>` artifacts.
+- Normal Phase 6 tests and smokes require no Internet, live Ollama, Kali,
+  Docker, root, public target, or real credential.
+
+Phase 6 does not claim the Phase 7 global report redesign or Phase 8 FastAPI
+migration.
 
 ## Phase 5 status
 

@@ -478,7 +478,13 @@ class DiagnosticsAndKaliTests(unittest.TestCase):
         self.assertFalse(json.loads(strict.stdout)["success"])
 
     def test_kali_not_configured_without_live_scan(self):
-        result = self.runner.invoke(app, ["kali", "status", "--json"])
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / "empty.env"
+            env_file.write_text("", encoding="utf-8")
+            result = self.runner.invoke(
+                app,
+                ["--env-file", str(env_file), "kali", "status", "--json"],
+            )
         self.assertEqual(result.exit_code, 0)
         data = json.loads(result.stdout)["data"]
         self.assertEqual(data[0]["status"], "not_configured")

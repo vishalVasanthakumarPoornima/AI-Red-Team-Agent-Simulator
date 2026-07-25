@@ -171,6 +171,37 @@ flowchart LR
   K --> L["SHA-256 manifest"]
 ```
 
-The common engine is deterministic and does not implement Phase 6
-model-driven adaptive planning, Phase 7 global report redesign, or Phase 8
+The common Phase 5 engine remains deterministic. Phase 6 layers the
+`redteam_platform.adaptive_engine` package on top; it does not replace target
+resolution, authorization, registered tools, or deterministic evaluation.
+
+## Phase 6 bounded adaptive engine
+
+```mermaid
+flowchart TD
+  A["Phase 5 target, baseline, evidence"] --> B["Coverage gap hypotheses"]
+  B --> C["Minimized sanitized context + hash"]
+  C --> D["Deterministic or local Ollama planner"]
+  D --> E["Untrusted typed proposals"]
+  E --> F["Schema/template/capability/scope/budget validator"]
+  F -->|rejected| G["proposal_rejections.json"]
+  F -->|accepted| H["Registered Phase 5 tool"]
+  H --> I["Deterministic Phase 5 evaluator"]
+  I --> J["Evidence + coverage + novelty deltas"]
+  J --> K["Deterministic stopping policy"]
+  K --> L["Adaptive artifacts + rebuilt manifest"]
+```
+
+The focused package separates configuration, models, roles, providers,
+planning, hypotheses, templates, mutations, validation, execution, evaluation,
+novelty, coverage, stopping, lifecycle, artifacts, service orchestration, and
+benchmarking. Raw provider output never enters a tool invocation. The provider
+can only produce a strict schema that is independently checked against human
+configuration and a typed template registry backed by Phase 5 probes.
+
+Adaptive records extend the existing unique run directory and its SHA-256
+manifest. Benchmarks use `reports/benchmarks/` and synthetic cases, so their
+metrics and recommendations cannot be confused with target findings.
+
+Phase 6 does not implement the Phase 7 global report redesign or Phase 8
 FastAPI migration.

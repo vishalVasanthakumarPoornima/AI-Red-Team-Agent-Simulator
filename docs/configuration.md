@@ -22,6 +22,31 @@ CLI/programmatic overrides. `--config PATH` and `--env-file PATH` select the
 first two layers. Invalid values fail startup with field-specific messages.
 Secret values are never included by `sanitized_settings`.
 
+## Phase 6 adaptive settings
+
+| Environment variable | TOML field | Default |
+| --- | --- | --- |
+| `REDTEAM_ADAPTIVE_DEFAULT_MODE` | `adaptive_default_mode` | `off` |
+| `REDTEAM_ADAPTIVE_CATEGORIES` | `adaptive_categories` | Eight registered Phase 5 AI categories |
+| `REDTEAM_ADAPTIVE_MAX_ROUNDS` | `adaptive_max_rounds` | `8` |
+| `REDTEAM_ADAPTIVE_MAX_TOTAL_PROBES` | `adaptive_max_total_probes` | `100` |
+| `REDTEAM_ADAPTIVE_MAX_PROBES_PER_ROUND` | `adaptive_max_probes_per_round` | `15` |
+| `REDTEAM_ADAPTIVE_MAX_MODEL_CALLS` | `adaptive_max_model_calls` | `25` |
+| `REDTEAM_ADAPTIVE_MAX_DURATION_SECONDS` | `adaptive_max_duration_seconds` | `1200` |
+| `REDTEAM_ADAPTIVE_NO_NOVELTY_ROUNDS` | `adaptive_no_novelty_rounds` | `2` |
+| `REDTEAM_ADAPTIVE_DUPLICATE_RATE_THRESHOLD` | `adaptive_duplicate_rate_threshold` | `0.5` |
+| `REDTEAM_ADAPTIVE_PROMPT_MAX_CHARACTERS` | `adaptive_prompt_max_characters` | `4000` |
+| `REDTEAM_ADAPTIVE_PROVIDER_TIMEOUT_SECONDS` | `adaptive_provider_timeout_seconds` | `30` |
+| `REDTEAM_ADAPTIVE_PROVIDER_RETRIES` | `adaptive_provider_retries` | `1` |
+| `REDTEAM_ADAPTIVE_PROVIDER_REPAIRS` | `adaptive_provider_repairs` | `1` |
+| `REDTEAM_ADAPTIVE_DETERMINISTIC_FALLBACK` | `adaptive_deterministic_fallback` | `true` |
+| `REDTEAM_ADAPTIVE_BENCHMARK_ROOT` | `adaptive_benchmark_root` | `reports/benchmarks` |
+| `REDTEAM_ADAPTIVE_BENCHMARK_DATASET` | `adaptive_benchmark_dataset` | `phase6-v1` |
+
+Benchmark weights are visible in `adaptive_benchmark_weights` and every
+benchmark configuration artifact. Role model and fallback selection are
+per-command values rather than secrets or implicit global choices.
+
 The checked-in examples use loopback-only, passive defaults:
 `.env.example` and `config.example.toml`.
 

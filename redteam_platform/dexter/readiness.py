@@ -17,6 +17,7 @@ from redteam_platform.dexter.models import (
 )
 from redteam_platform.inventory import InventoryService
 from redteam_platform.inventory.models import OllamaModel
+from redteam_platform.inventory.ollama import OllamaDiscovery
 from redteam_platform.scope_policy import ScopeDeniedError, ScopePolicy
 from redteam_platform.settings import Settings
 
@@ -95,6 +96,22 @@ class DexterReadinessService:
                     if cached
                     else []
                 )
+                if live:
+                    live_settings = self.settings.model_copy(
+                        update={"ollama_live_check": True}
+                    )
+                    live_models, _ = OllamaDiscovery(live_settings).collect()
+                    selected_live_models = [
+                        item
+                        for item in live_models
+                        if isinstance(item, OllamaModel)
+                        and (
+                            not target.model_name
+                            or item.model_name == target.model_name
+                        )
+                    ]
+                    if selected_live_models:
+                        models = selected_live_models
                 if not models:
                     ollama.status = DexterComponentStatus.UNAVAILABLE
                     ollama.errors.append("Expected Ollama model was not found in cached inventory.")

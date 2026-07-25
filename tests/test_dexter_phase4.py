@@ -808,6 +808,19 @@ class DexterAuthorizationKaliAndCoverageTests(unittest.TestCase):
             results = service.execute(target, plan, authorization)
         self.assertTrue(results)
         self.assertEqual(stopped, [tunnel])
+        self.assertTrue(
+            any(
+                item.get("tool") == "registered-tunnel-openapi"
+                and item.get("status") == "complete"
+                for item in results
+            )
+        )
+        self.assertTrue(
+            any(
+                item.get("tool") == "registered-reverse-tunnel-cleanup"
+                for item in results
+            )
+        )
         self.assertTrue(all(isinstance(call, list) for call in calls))
         self.assertFalse(any(";" in part for call in calls for part in call))
         self.assertLessEqual(
@@ -883,6 +896,7 @@ class DexterEndToEndAndCLITests(unittest.TestCase):
 
     def _config_file(self, fixture: DexterFixture) -> Path:
         config = self.root / "redteam.toml"
+        (self.root / "empty.env").write_text("", encoding="utf-8")
         config.write_text(
             "\n".join(
                 [
@@ -1064,6 +1078,8 @@ class DexterEndToEndAndCLITests(unittest.TestCase):
             prefix = [
                 "--config",
                 str(config),
+                "--env-file",
+                str(self.root / "empty.env"),
                 "dexter",
             ]
             discover = self.runner.invoke(app, [*prefix, "discover", "--json"])
@@ -1088,6 +1104,8 @@ class DexterEndToEndAndCLITests(unittest.TestCase):
                 "--json",
                 "--config",
                 str(config),
+                "--env-file",
+                str(self.root / "empty.env"),
                 "dexter",
             ]
             discover = self.runner.invoke(app, [*prefix, "discover"])
@@ -1140,6 +1158,8 @@ class DexterEndToEndAndCLITests(unittest.TestCase):
                     "--non-interactive",
                     "--config",
                     str(config),
+                    "--env-file",
+                    str(self.root / "empty.env"),
                     "dexter",
                     "assess",
                     "Dexter Fixture",
