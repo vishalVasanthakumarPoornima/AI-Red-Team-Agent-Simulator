@@ -30,6 +30,54 @@ http_metadata_routes = ["/health", "/metadata", "/targets", "/openapi.json", "/v
 known_local_service_ports = [18080, 18101, 18102, 8000, 8080, 5000, 5001]
 inventory_cache_ttl_seconds = 60
 passive_only = true
+default_ollama_model = "llama3.2:1b"
+approved_host_ports = [22, 80, 443, 8000, 8080, 8443, 11434]
+host_timeout_seconds = 3.0
+web_path_allowlist = ["/", "/health", "/metadata", "/openapi.json"]
+maximum_redirects = 3
+maximum_response_bytes = 262144
+assessment_maximum_requests = 40
+assessment_maximum_duration_seconds = 300
+assessment_maximum_concurrency = 1
+tls_verify = true
+tls_minimum_version = "TLSv1.2"
+kali_tool_allowlist = ["nmap", "whatweb", "curl"]
+nuclei_safe_template_allowlist = []
+
+[redteam.profile_budgets.passive]
+max_probes = 12
+max_duration_seconds = 120
+
+[redteam.profile_budgets.standard]
+max_probes = 40
+max_duration_seconds = 300
+
+[redteam.profile_budgets.deep-lab]
+max_probes = 80
+max_duration_seconds = 600
+
+[[redteam.http_agent_definitions]]
+id = "local_fixture_agent"
+name = "Local fixture agent"
+kind = "http_agent"
+endpoint = "http://127.0.0.1:18080"
+invocation_route = "/invoke"
+health_route = "/health"
+request_field = "prompt"
+response_field = "response"
+authentication_mode = "none"
+
+[[redteam.openai_compatible_endpoints]]
+id = "local_openai_fixture"
+name = "Local OpenAI-compatible fixture"
+kind = "openai_compatible"
+endpoint = "http://127.0.0.1:18081"
+invocation_route = "/v1/chat/completions"
+authentication_mode = "bearer"
+authentication_reference = "local-openai-key"
+
+[redteam.authentication_references]
+local-openai-key = "LOCAL_OPENAI_FIXTURE_API_KEY"
 # api_token = "generate-a-long-random-local-token"
 
 [redteam.dexter]

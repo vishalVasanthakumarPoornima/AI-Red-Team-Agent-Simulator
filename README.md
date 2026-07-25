@@ -1,5 +1,28 @@
 # AI Agent Red Team Simulator
 
+## Phase 5 unified local assessments
+
+The `redteam` CLI resolves typed targets and runs complete deterministic plans
+for enrolled Python agents, configured HTTP/OpenAI-compatible agents, explicit
+Ollama models, one host/IP, and one website/web application. Dexter continues
+through its specialized Phase 4 workflow.
+
+```bash
+.venv/bin/redteam targets parse tool_agent
+.venv/bin/redteam targets resolve tool_agent
+.venv/bin/redteam assess plan python://tool_agent --profile passive
+.venv/bin/redteam assess run python://tool_agent --profile standard \
+  --authorization "I own this local synthetic target and authorize bounded testing."
+```
+
+Every run is scope checked, human authorized, request/time bounded, and stored
+in a unique run directory with sanitized evidence, findings, coverage,
+Markdown/JSON reports, events, and a SHA-256 manifest. Host checks use only
+explicit ports; web checks use a small configured path set; public targets are
+denied by default. Start with [unified targets](docs/targets.md),
+[deterministic assessments](docs/assessments.md), and
+[scope and authorization](docs/scope-and-authorization.md).
+
 A local, authorized AI security testing project for evaluating AI agents against
 common failure modes:
 

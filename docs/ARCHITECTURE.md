@@ -140,3 +140,37 @@ flowchart LR
 HTTP, inventory, Kali, readiness, clock, ID generation, cancellation, reporter,
 and artifact creation boundaries are injectable for deterministic tests. The
 local CLI path has no dependency on the optional FastAPI service.
+
+## Phase 5 unified targets and deterministic assessments
+
+Phase 5 adds `redteam_platform.targets` and
+`redteam_platform.assessments` without replacing earlier services.
+
+```mermaid
+flowchart TD
+  A["TargetDescriptor"] --> B["Deterministic registry"]
+  B --> C["Dexter bridge"]
+  B --> D["Python adapter"]
+  B --> E["HTTP/OpenAI/Ollama adapter"]
+  B --> F["Host/Web/Local adapter"]
+  C --> G["Specialized Phase 4 services"]
+  D --> H["Common planner and tools"]
+  E --> H
+  F --> H
+```
+
+```mermaid
+flowchart LR
+  A["Authorization"] --> B["target.json"]
+  C["Phase 2 inventory"] --> D["inventory.json"]
+  E["Plan"] --> F["assessment_plan.json"]
+  G["Registered tool evidence"] --> H["evidence/"]
+  H --> I["results and findings"]
+  I --> J["coverage and summary"]
+  J --> K["report.md and report.json"]
+  K --> L["SHA-256 manifest"]
+```
+
+The common engine is deterministic and does not implement Phase 6
+model-driven adaptive planning, Phase 7 global report redesign, or Phase 8
+FastAPI migration.

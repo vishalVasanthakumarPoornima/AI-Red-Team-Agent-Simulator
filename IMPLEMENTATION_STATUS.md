@@ -2,6 +2,34 @@
 
 Last updated: 2026-07-23
 
+## Phase 5 status
+
+Phase 5 is implemented as a unified typed target and deterministic assessment
+framework. It preserves the specialized Phase 4 Dexter discovery, readiness,
+planning, assessment, findings, coverage, and CLI paths.
+
+- `redteam_platform/targets` provides network-free parsing, safe
+  normalization, Phase 2 inventory/configuration resolution, ambiguity
+  handling, typed descriptors, deterministic registry metadata, and common
+  adapters.
+- `redteam_platform/assessments` provides passive, standard, and deep-lab
+  profiles; complete serialized plans; registered Python, HTTP, socket, TLS,
+  subprocess, and explicit opt-in Kali tools; fixed AI/API/web/host probes;
+  versioned evaluation; typed deduplicated findings; truthful coverage;
+  cancellation cleanup; isolated artifacts; and Markdown/JSON reports.
+- The CLI exposes `targets parse|resolve|show|capabilities|health` and
+  `assess plan|run|python|agent|ollama|host|web` while retaining legacy
+  commands and Dexter specialization.
+- Host assessment is limited to one exact host and at most 64 explicit ports.
+  Web assessment uses configured paths, response caps, redirect revalidation,
+  verified TLS, and non-destructive synthetic inputs. HTTP/OpenAI
+  authentication uses secret references rather than stored secret values.
+- Normal validation is local/disposable and does not require Internet, a real
+  provider, external Ollama, Docker, root, Kali, or credentials.
+
+Phase 5 does not claim Phase 6 adaptive model planning, the Phase 7 global
+report redesign, or the Phase 8 FastAPI migration.
+
 ## Phase 3 status
 
 Phase 3 is complete. The supported CLI is now a modular Typer/Rich application

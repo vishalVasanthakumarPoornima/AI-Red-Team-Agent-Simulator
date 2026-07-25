@@ -1,5 +1,23 @@
 # CLI reference
 
+## Phase 5 target and assessment commands
+
+```text
+redteam targets
+redteam targets parse|resolve|show|capabilities|health TARGET
+redteam assess plan TARGET
+redteam assess run TARGET
+redteam assess python|agent|ollama|host|web TARGET
+```
+
+`targets parse` is network-free. `assess plan` has no run side effects.
+Every execution command requires `--authorization`; `--yes` is only a final
+confirmation and cannot create authorization. Use `--json` globally or on the
+command for a typed envelope. Resolution/scope denial exits 4, unavailable or
+ambiguous targets exit 5, assessment failure exits 7, and interruption exits
+130. Existing option-based Phase 3 commands and the specialized `dexter`
+command group remain supported.
+
 The supported executable is `redteam`; `python -m redteam_platform` is
 equivalent. Running with no command opens the menu only when stdin and stdout
 are terminals. A pipe, CI job, or `--non-interactive` execution prints help or

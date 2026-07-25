@@ -1,5 +1,21 @@
 # Configuration
 
+## Phase 5 target and budget settings
+
+`generic_targets`, `http_agent_definitions`, and
+`openai_compatible_endpoints` declare loopback/private-lab targets without
+embedding credentials. `authentication_references` maps a safe reference name
+to an environment-variable name. The secret value is read only at request
+time.
+
+Host/web bounds are controlled by `approved_host_ports`,
+`host_timeout_seconds`, `web_path_allowlist`, `maximum_redirects`,
+`maximum_response_bytes`, `assessment_maximum_requests`,
+`assessment_maximum_duration_seconds`, `assessment_maximum_concurrency`,
+`tls_verify`, and `tls_minimum_version`. `profile_budgets` provides hard caps
+for passive, standard, and deep-lab. Kali and nuclei names must be explicitly
+allowlisted. See `config.example.toml` for loopback-only examples.
+
 `redteam_platform.settings.load_settings` applies configuration in this order:
 TOML, the selected environment file, process environment, then explicit
 CLI/programmatic overrides. `--config PATH` and `--env-file PATH` select the

@@ -26,6 +26,7 @@ from redteam_platform.cli.commands import kali as kali_commands
 from redteam_platform.cli.commands import menu as menu_commands
 from redteam_platform.cli.commands import runs as runs_commands
 from redteam_platform.cli.commands import scope as scope_commands
+from redteam_platform.cli.commands import targets as targets_commands
 from redteam_platform.cli.context import CLIContext, build_context
 from redteam_platform.cli.errors import CLIError, normalize_error
 from redteam_platform.cli.exit_codes import ExitCode
@@ -117,6 +118,7 @@ inventory_app = typer.Typer(help="Browse and refresh passive environment invento
 models_app = typer.Typer(help="Browse installed and running local models.", invoke_without_command=True)
 agents_app = typer.Typer(help="Browse enrolled and compatible AI agents.", invoke_without_command=True)
 services_app = typer.Typer(help="Browse listening services and ports.", invoke_without_command=True)
+targets_app = typer.Typer(help="Parse, resolve, inspect, and health-check typed targets.", invoke_without_command=True)
 assess_app = typer.Typer(help="Plan or run bounded authorized assessments.", invoke_without_command=True)
 dexter_app = typer.Typer(help="Discover, inspect, plan, and assess Dexter deployments.", invoke_without_command=True)
 runs_app = typer.Typer(help="Browse persisted run artifacts.")
@@ -127,6 +129,7 @@ config_app = typer.Typer(help="Inspect and validate non-secret configuration.")
 help_app = typer.Typer(help="Read onboarding and safety topics.", invoke_without_command=True)
 
 inventory_commands.register(app, inventory_app, models_app, agents_app, services_app)
+targets_commands.register(app, targets_app)
 assess_commands.register(app, assess_app)
 dexter_commands.register(app, dexter_app)
 runs_commands.register(app, runs_app, reports_app)
@@ -202,30 +205,6 @@ def version_command(ctx: typer.Context, json_output: bool = typer.Option(False, 
         state.console.print(__version__)
 
 
-@app.command("targets", help="Compatibility command listing enrolled Python targets.")
-def targets(ctx: typer.Context, refresh: bool = typer.Option(False, "--refresh"), json_output: bool = typer.Option(False, "--json")) -> None:
-    state: CLIContext = ctx.find_root().obj
-    snapshot = InventoryService(state.settings).collect(
-        include_ollama=False,
-        include_listeners=False,
-        include_targets=True,
-        include_http=False,
-        include_docker=False,
-        include_kali=False,
-        force_refresh=refresh,
-    )
-    rows = [
-        item.model_dump(mode="json")
-        for item in snapshot.items
-        if isinstance(item, AgentDescriptor) and item.item_type == ItemType.PYTHON_TARGET
-    ]
-    if state.json_output or json_output:
-        emit_json(state, rows)
-    else:
-        for row in rows:
-            state.console.print(f"{row['name']}: {row.get('local_path') or row.get('endpoint')}")
-
-
 @app.command("init", help="Create a protected starter config; refuses overwrite.")
 def init_config(
     ctx: typer.Context,
@@ -298,7 +277,7 @@ def main() -> None:
         raise SystemExit(exc.exit_code) from exc
     except click.exceptions.Exit as exc:
         raise SystemExit(exc.exit_code) from exc
-    except click.Abort as exc:
+    except click.exceptions.Abort as exc:
         raise SystemExit(ExitCode.INTERRUPTED) from exc
     except BrokenPipeError:
         try:

@@ -1,5 +1,15 @@
 # Scope and authorization
 
+## Unified assessment enforcement
+
+Phase 5 applies scope after deterministic normalization, again before run
+creation, and for every plan scope target before any registered tool executes.
+Redirects are separately revalidated. Active HTTP, Python, host, web, Ollama,
+OpenAI-compatible, and Kali operations require a human-controlled
+authorization statement of at least 12 characters. Model output cannot supply
+authorization, change the target, add ports, or add steps. Deep-lab is limited
+to loopback/configured lab scope and requires final interactive confirmation.
+
 The deterministic `ScopePolicy` is the only scope decision layer used by the
 CLI, API, adapters, and executor. Loopback is allowed by default. Lab CIDRs,
 domains, and Kali aliases must be configured explicitly. Public targets remain

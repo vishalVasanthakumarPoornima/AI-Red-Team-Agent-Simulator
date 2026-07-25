@@ -22,6 +22,8 @@ from redteam_platform.inventory.models import (
 )
 from redteam_platform.schemas import AssessmentBudget, AssessmentProfile
 from redteam_platform.service import ApplicationService
+from redteam_platform.assessments import UnifiedAssessmentService
+from redteam_platform.targets.models import TargetKind
 
 
 SUPPORTED_KINDS = {"python", "http", "openai", "ollama", "dexter"}
@@ -137,6 +139,145 @@ def _execute(state: CLIContext, request) -> dict:
         "reports": reports,
         "event_count": len(events),
     }
+
+
+KIND_HINTS = {
+    "python": TargetKind.PYTHON_AGENT,
+    "agent": TargetKind.HTTP_AGENT,
+    "http": TargetKind.HTTP_AGENT,
+    "openai": TargetKind.OPENAI_COMPATIBLE,
+    "ollama": TargetKind.OLLAMA_ENDPOINT,
+    "host": TargetKind.HOST,
+    "web": TargetKind.WEB_APPLICATION,
+}
+
+
+def _unified_plan(
+    state: CLIContext,
+    *,
+    command: str,
+    target: str,
+    kind: str | None,
+    profile: AssessmentProfile,
+    model: str | None,
+    ports: list[int] | None,
+    paths: list[str] | None,
+    include_kali: bool,
+    json_output: bool,
+) -> None:
+    service = UnifiedAssessmentService(state.settings)
+    resolution = service.resolve(
+        target,
+        kind_hint=KIND_HINTS.get(kind or ""),
+        model_name=model,
+        ports=ports,
+    )
+    if resolution.target and resolution.target.target_kind == TargetKind.DEXTER:
+        from redteam_platform.cli.commands.dexter import build_plan, _render_plan
+        from redteam_platform.dexter.models import DexterProfile
+
+        dexter_target, dexter_readiness, dexter_plan = build_plan(
+            state,
+            resolution.target.stable_id,
+            profile=DexterProfile(profile.value),
+            include_kali=include_kali,
+            refresh=False,
+        )
+        payload = {
+            "target": dexter_target,
+            "readiness": dexter_readiness,
+            "plan": dexter_plan,
+        }
+        if state.json_output or json_output:
+            emit_envelope(state, command, payload)
+        else:
+            _render_plan(state, dexter_target, dexter_readiness, dexter_plan)
+        return
+    descriptor, health, plan = service.plan(
+        target,
+        profile=profile,
+        kind_hint=KIND_HINTS.get(kind or ""),
+        model_name=model,
+        ports=ports,
+        paths=paths,
+        include_kali=include_kali,
+    )
+    payload = {"target": descriptor, "health": health, "plan": plan}
+    if state.json_output or json_output:
+        emit_envelope(state, command, payload)
+    else:
+        state.console.print(details_table("Target", descriptor.model_dump(mode="json").items()))
+        state.console.print(details_table("Health", health.model_dump(mode="json").items()))
+        state.console.print(details_table("Deterministic plan", plan.model_dump(mode="json").items()))
+
+
+def _unified_run(
+    state: CLIContext,
+    *,
+    command: str,
+    target: str,
+    authorization: str | None,
+    kind: str | None,
+    profile: AssessmentProfile,
+    model: str | None,
+    ports: list[int] | None,
+    paths: list[str] | None,
+    include_kali: bool,
+    public: bool,
+    yes: bool,
+    json_output: bool,
+) -> None:
+    if not authorization:
+        raise CLIError(
+            "Missing required --authorization.",
+            ExitCode.SCOPE_OR_AUTHORIZATION_DENIED,
+            "missing_authorization",
+        )
+    service = UnifiedAssessmentService(state.settings)
+    resolution = service.resolve(
+        target,
+        kind_hint=KIND_HINTS.get(kind or ""),
+        model_name=model,
+        ports=ports,
+    )
+    if resolution.target and resolution.target.target_kind == TargetKind.DEXTER:
+        from redteam_platform.cli.commands.dexter import execute_assessment_command
+        from redteam_platform.dexter.models import DexterProfile
+
+        execute_assessment_command(
+            state,
+            dexter_id=resolution.target.stable_id,
+            profile=DexterProfile(profile.value),
+            authorization=authorization,
+            include_kali=include_kali,
+            refresh=False,
+            yes=yes,
+            command=command,
+        )
+        return
+    with operation(state, "Running deterministic authorized assessment…"):
+        result = service.run(
+            target,
+            authorization=authorization,
+            profile=profile,
+            kind_hint=KIND_HINTS.get(kind or ""),
+            model_name=model,
+            ports=ports,
+            paths=paths,
+            include_kali=include_kali,
+            public_mode=public,
+            interactive_confirmation=(yes or state.interactive),
+        )
+    if state.json_output or json_output:
+        emit_envelope(state, command, result)
+    else:
+        state.console.print(
+            details_table(
+                "Assessment result",
+                result["summary"].model_dump(mode="json").items(),
+            )
+        )
+        state.console.print(details_table("Artifacts", result["artifacts"].items()))
 
 
 def run_wizard(state: CLIContext) -> None:
@@ -428,8 +569,9 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
     @assess_app.command("plan", help="Validate and display an assessment plan without creating a run.")
     def plan(
         ctx: typer.Context,
-        target: str = typer.Option(..., "--target"),
-        authorization: str = typer.Option(..., "--authorization"),
+        target_arg: Optional[str] = typer.Argument(None, metavar="TARGET"),
+        target: Optional[str] = typer.Option(None, "--target"),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
         kind: str = typer.Option("python", "--kind"),
         profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
         category: Optional[list[str]] = typer.Option(None, "--category"),
@@ -441,8 +583,36 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
         duration: int = typer.Option(1200, min=1, max=86400),
         public: bool = typer.Option(False, "--public"),
         yes: bool = typer.Option(False, "--yes"),
+        model: Optional[str] = typer.Option(None, "--model"),
+        port: Optional[list[int]] = typer.Option(None, "--port"),
+        path: Optional[list[str]] = typer.Option(None, "--path"),
+        include_kali: bool = typer.Option(False, "--include-kali"),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
+        state = _state(ctx)
+        state.json_output = state.json_output or json_output
+        if target_arg:
+            _unified_plan(
+                state,
+                command="assess.plan",
+                target=target_arg,
+                kind=None if kind == "python" else kind,
+                profile=profile,
+                model=model or target_model,
+                ports=port,
+                paths=path,
+                include_kali=include_kali,
+                json_output=json_output,
+            )
+            return
+        if not target:
+            raise CLIError("Missing target.", ExitCode.INVALID_USAGE, "missing_target")
+        if not authorization:
+            raise CLIError(
+                "Missing required --authorization for legacy option-based planning.",
+                ExitCode.SCOPE_OR_AUTHORIZATION_DENIED,
+                "missing_authorization",
+            )
         start_impl(ctx, target, authorization, kind, profile, category, planner_model, target_model, rounds, probes, model_calls, duration, public, yes, True, json_output)
 
     @assess_app.command("local-agent", help="Assess an enrolled Python target with the same scope and authorization controls.")
@@ -467,11 +637,12 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
     ) -> None:
         start_impl(ctx, target, authorization, "python", AssessmentProfile.STANDARD, category, None, None, 8, 100, 24, 1200, False, yes, False, json_output)
 
-    @assess_app.command("run", hidden=True)
+    @assess_app.command("run", help="Run a unified deterministic assessment; legacy options remain accepted.")
     def legacy_run(
         ctx: typer.Context,
-        target: str = typer.Option(..., "--target"),
-        authorization: str = typer.Option(..., "--authorization"),
+        target_arg: Optional[str] = typer.Argument(None, metavar="TARGET"),
+        target: Optional[str] = typer.Option(None, "--target"),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
         kind: str = typer.Option("python", "--kind"),
         profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
         category: Optional[list[str]] = typer.Option(None, "--category"),
@@ -483,6 +654,130 @@ def register(root: typer.Typer, assess_app: typer.Typer) -> None:
         duration: int = typer.Option(1200, min=1, max=86400),
         public: bool = typer.Option(False, "--public"),
         yes: bool = typer.Option(False, "--yes"),
+        model: Optional[str] = typer.Option(None, "--model"),
+        port: Optional[list[int]] = typer.Option(None, "--port"),
+        path: Optional[list[str]] = typer.Option(None, "--path"),
+        include_kali: bool = typer.Option(False, "--include-kali"),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
+        state = _state(ctx)
+        state.json_output = state.json_output or json_output
+        if target_arg:
+            _unified_run(
+                state,
+                command="assess.run",
+                target=target_arg,
+                authorization=authorization,
+                kind=None if kind == "python" else kind,
+                profile=profile,
+                model=model or target_model,
+                ports=port,
+                paths=path,
+                include_kali=include_kali,
+                public=public,
+                yes=yes,
+                json_output=json_output,
+            )
+            return
+        if not target:
+            raise CLIError("Missing target.", ExitCode.INVALID_USAGE, "missing_target")
         start_impl(ctx, target, authorization, kind, profile, category, planner_model, target_model, rounds, probes, model_calls, duration, public, yes, False, json_output)
+
+    def typed_command(
+        ctx: typer.Context,
+        *,
+        command: str,
+        kind: str,
+        target: str,
+        authorization: Optional[str],
+        profile: AssessmentProfile,
+        model: Optional[str],
+        port: Optional[list[int]],
+        path: Optional[list[str]],
+        include_kali: bool,
+        public: bool,
+        yes: bool,
+        json_output: bool,
+    ) -> None:
+        state = _state(ctx)
+        state.json_output = state.json_output or json_output
+        _unified_run(
+            state,
+            command=command,
+            target=target,
+            authorization=authorization,
+            kind=kind,
+            profile=profile,
+            model=model,
+            ports=port,
+            paths=path,
+            include_kali=include_kali,
+            public=public,
+            yes=yes,
+            json_output=json_output,
+        )
+
+    def typed_options(kind_name: str):
+        return kind_name
+
+    @assess_app.command("python", help="Assess an explicitly enrolled Python target.")
+    def python_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(...),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
+        profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
+        yes: bool = typer.Option(False, "--yes"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        typed_command(ctx, command="assess.python", kind="python", target=target, authorization=authorization, profile=profile, model=None, port=None, path=None, include_kali=False, public=False, yes=yes, json_output=json_output)
+
+    @assess_app.command("agent", help="Assess an HTTP or OpenAI-compatible AI agent.")
+    def agent_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(...),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
+        kind: str = typer.Option("agent", "--kind"),
+        profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
+        model: Optional[str] = typer.Option(None, "--model"),
+        yes: bool = typer.Option(False, "--yes"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        typed_command(ctx, command="assess.agent", kind=kind, target=target, authorization=authorization, profile=profile, model=model, port=None, path=None, include_kali=False, public=False, yes=yes, json_output=json_output)
+
+    @assess_app.command("ollama", help="Assess an explicitly selected Ollama model endpoint.")
+    def ollama_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(...),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
+        profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
+        model: Optional[str] = typer.Option(None, "--model"),
+        yes: bool = typer.Option(False, "--yes"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        typed_command(ctx, command="assess.ollama", kind="ollama", target=target, authorization=authorization, profile=profile, model=model, port=None, path=None, include_kali=False, public=False, yes=yes, json_output=json_output)
+
+    @assess_app.command("host", help="Assess one host using only explicit approved ports.")
+    def host_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(...),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
+        profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
+        port: Optional[list[int]] = typer.Option(None, "--port"),
+        include_kali: bool = typer.Option(False, "--include-kali"),
+        yes: bool = typer.Option(False, "--yes"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        typed_command(ctx, command="assess.host", kind="host", target=target, authorization=authorization, profile=profile, model=None, port=port, path=None, include_kali=include_kali, public=False, yes=yes, json_output=json_output)
+
+    @assess_app.command("web", help="Assess one authorized website or web application.")
+    def web_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(...),
+        authorization: Optional[str] = typer.Option(None, "--authorization"),
+        profile: AssessmentProfile = typer.Option(AssessmentProfile.STANDARD, "--profile"),
+        path: Optional[list[str]] = typer.Option(None, "--path"),
+        public: bool = typer.Option(False, "--public"),
+        yes: bool = typer.Option(False, "--yes"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        typed_command(ctx, command="assess.web", kind="web", target=target, authorization=authorization, profile=profile, model=None, port=None, path=path, include_kali=False, public=public, yes=yes, json_output=json_output)

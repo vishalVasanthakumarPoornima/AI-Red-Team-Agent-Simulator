@@ -212,6 +212,43 @@ class Settings(BaseSettings):
     kali_ssh_key: Path | None = None
     dexter: DexterSettings = Field(default_factory=DexterSettings)
     dexter_deployments: list[DexterSettings] = Field(default_factory=list)
+    generic_targets: list[dict[str, Any]] = Field(default_factory=list)
+    http_agent_definitions: list[dict[str, Any]] = Field(default_factory=list)
+    openai_compatible_endpoints: list[dict[str, Any]] = Field(default_factory=list)
+    authentication_references: dict[str, str] = Field(default_factory=dict)
+    default_ollama_model: str | None = None
+    approved_host_ports: list[int] = Field(
+        default_factory=lambda: [22, 80, 443, 8000, 8080, 8443, 11434]
+    )
+    host_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    web_path_allowlist: list[str] = Field(
+        default_factory=lambda: ["/", "/health", "/metadata", "/openapi.json"]
+    )
+    maximum_redirects: int = Field(default=3, ge=0, le=10)
+    maximum_response_bytes: int = Field(default=262_144, ge=1024, le=5_000_000)
+    assessment_maximum_requests: int = Field(default=40, ge=1, le=500)
+    assessment_maximum_duration_seconds: int = Field(default=300, ge=1, le=3600)
+    assessment_maximum_concurrency: int = Field(default=1, ge=1, le=8)
+    profile_budgets: dict[str, dict[str, int]] = Field(
+        default_factory=lambda: {
+            "passive": {"max_probes": 12, "max_duration_seconds": 120},
+            "standard": {"max_probes": 40, "max_duration_seconds": 300},
+            "deep-lab": {"max_probes": 80, "max_duration_seconds": 600},
+        }
+    )
+    tls_verify: bool = True
+    tls_minimum_version: str = "TLSv1.2"
+    kali_tool_allowlist: list[str] = Field(
+        default_factory=lambda: ["nmap", "whatweb", "curl"]
+    )
+    nuclei_safe_template_allowlist: list[str] = Field(default_factory=list)
+
+    @field_validator("tls_minimum_version")
+    @classmethod
+    def validate_tls_minimum_version(cls, value: str) -> str:
+        if value not in {"TLSv1.2", "TLSv1.3"}:
+            raise ValueError("tls_minimum_version must be TLSv1.2 or TLSv1.3")
+        return value
 
     @field_validator(
         "allowed_cidrs",
@@ -220,6 +257,8 @@ class Settings(BaseSettings):
         "configured_agent_endpoints",
         "ollama_endpoints",
         "http_metadata_routes",
+        "kali_tool_allowlist",
+        "nuclei_safe_template_allowlist",
         mode="before",
     )
     @classmethod
@@ -236,6 +275,56 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
+
+    @field_validator("approved_host_ports", mode="before")
+    @classmethod
+    def parse_approved_ports(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("approved_host_ports", mode="after")
+    @classmethod
+    def validate_approved_ports(cls, values: list[int]) -> list[int]:
+        ports: list[int] = []
+        for raw in values:
+            port = int(raw)
+            if not 1 <= port <= 65535:
+                raise ValueError("approved_host_ports values must be between 1 and 65535")
+            if port not in ports:
+                ports.append(port)
+        if len(ports) > 64:
+            raise ValueError("approved_host_ports is limited to 64 explicit ports")
+        return ports
+
+    @field_validator("web_path_allowlist", mode="before")
+    @classmethod
+    def parse_web_paths(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("web_path_allowlist", mode="after")
+    @classmethod
+    def validate_web_paths(cls, values: list[str]) -> list[str]:
+        paths: list[str] = []
+        for value in values:
+            if not value.startswith("/") or "?" in value or "#" in value or ".." in value:
+                raise ValueError("web_path_allowlist entries must be absolute safe paths")
+            if value not in paths:
+                paths.append(value)
+        if len(paths) > 20:
+            raise ValueError("web_path_allowlist is limited to 20 paths")
+        return paths
+
+    @field_validator("kali_tool_allowlist", mode="after")
+    @classmethod
+    def validate_kali_tool_allowlist(cls, values: list[str]) -> list[str]:
+        allowed = {"nmap", "whatweb", "nikto", "curl"}
+        normalized = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+        if set(normalized) - allowed:
+            raise ValueError("kali_tool_allowlist contains an unregistered tool")
+        return normalized
 
     @field_validator("bind_host")
     @classmethod
@@ -379,6 +468,19 @@ ENV_FIELD_MAP = {
     "REDTEAM_PASSIVE_ONLY": "passive_only",
     "KALI_SSH_HOST": "kali_ssh_host",
     "KALI_SSH_KEY": "kali_ssh_key",
+    "REDTEAM_DEFAULT_OLLAMA_MODEL": "default_ollama_model",
+    "REDTEAM_APPROVED_HOST_PORTS": "approved_host_ports",
+    "REDTEAM_HOST_TIMEOUT_SECONDS": "host_timeout_seconds",
+    "REDTEAM_WEB_PATH_ALLOWLIST": "web_path_allowlist",
+    "REDTEAM_MAXIMUM_REDIRECTS": "maximum_redirects",
+    "REDTEAM_MAXIMUM_RESPONSE_BYTES": "maximum_response_bytes",
+    "REDTEAM_ASSESSMENT_MAXIMUM_REQUESTS": "assessment_maximum_requests",
+    "REDTEAM_ASSESSMENT_MAXIMUM_DURATION_SECONDS": "assessment_maximum_duration_seconds",
+    "REDTEAM_ASSESSMENT_MAXIMUM_CONCURRENCY": "assessment_maximum_concurrency",
+    "REDTEAM_TLS_VERIFY": "tls_verify",
+    "REDTEAM_TLS_MINIMUM_VERSION": "tls_minimum_version",
+    "REDTEAM_KALI_TOOL_ALLOWLIST": "kali_tool_allowlist",
+    "REDTEAM_NUCLEI_SAFE_TEMPLATE_ALLOWLIST": "nuclei_safe_template_allowlist",
 }
 
 DEXTER_ENV_MAP = {
