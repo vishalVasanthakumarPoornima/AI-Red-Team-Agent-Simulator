@@ -1,0 +1,17 @@
+"""Stable process exit codes for CLI callers and CI."""
+
+from enum import IntEnum
+
+
+class ExitCode(IntEnum):
+    SUCCESS = 0
+    GENERAL_FAILURE = 1
+    INVALID_USAGE = 2
+    INVALID_CONFIGURATION = 3
+    SCOPE_OR_AUTHORIZATION_DENIED = 4
+    TARGET_UNAVAILABLE = 5
+    DEPENDENCY_UNAVAILABLE = 6
+    ASSESSMENT_FAILED = 7
+    PARTIAL_STRICT = 8
+    ARTIFACT_FAILURE = 9
+    INTERRUPTED = 130

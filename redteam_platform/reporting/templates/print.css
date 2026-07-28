@@ -1,0 +1,1 @@
+@media print { nav, aside { display: none; } section, article { break-inside: avoid; } }

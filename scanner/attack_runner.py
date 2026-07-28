@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scanner.detectors import SEVERITY_ORDER, evaluate_response
+from scanner.detectors import SEVERITY_ORDER, evaluate_response, redact_configured_secrets
 from scanner.target_loader import discover_targets
 
 
@@ -77,7 +77,7 @@ def error_result(target, attack_name, prompt, response_text, reason):
         "target": target["name"],
         "attack": attack_name,
         "prompt": prompt,
-        "response": str(response_text),
+        "response": redact_configured_secrets(response_text),
         "status": "ERROR",
         "passed": False,
         "severity": "Error",
@@ -115,7 +115,7 @@ def run_prompt_against_target(target, attack_name, prompt):
             "target": target["name"],
             "attack": attack_name,
             "prompt": prompt,
-            "response": response_text,
+            "response": redact_configured_secrets(response_text),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **evaluation,
         }

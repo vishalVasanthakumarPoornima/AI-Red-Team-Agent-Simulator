@@ -11,6 +11,8 @@ import sys
 from local_red_team.run_local_red_team_scan import run_scan as run_local_red_team_scan
 from scanner.attack_runner import run_all_attacks, status_counts
 from scanner.target_loader import discover_targets
+from redteam_platform.scope_policy import ScopePolicy
+from redteam_platform.settings import load_settings
 
 
 DEFAULT_KALI_HOST = os.environ.get("KALI_SSH_HOST", "kali-redteam")
@@ -92,6 +94,9 @@ def cmd_kali_status(args):
         raise CliError("ssh was not found on this machine.")
 
     host = args.host or DEFAULT_KALI_HOST
+    decision = ScopePolicy(load_settings()).decide(f"ssh://{host}", active=False)
+    if not decision.allowed:
+        raise CliError(f"Kali host denied by scope policy: {decision.reason}")
     timeout = max(1, args.timeout)
     identity_file = resolve_identity_file(args.identity_file)
 
@@ -191,6 +196,32 @@ def cmd_agents_health(args):
     return 0
 
 
+def cmd_agents_discover(args):
+    from agent_registry import discover_local_agents, local_discovery_ports
+
+    ports = local_discovery_ports(args.ports, registry_path=args.registry)
+    agents = discover_local_agents(args.host, ports=ports, timeout=args.timeout)
+    if args.json:
+        print(json.dumps(agents, indent=2))
+        return 0
+    if not agents:
+        print(f"No active local agents found on {args.host}.")
+        return 1 if args.fail_on_none else 0
+
+    name_width = max(len("Agent"), *(len(str(agent.get("name", ""))) for agent in agents))
+    kind_width = max(len("Kind"), *(len(str(agent.get("kind", ""))) for agent in agents))
+    print(f"{'Agent'.ljust(name_width)}  {'Kind'.ljust(kind_width)}  Base URL  Targets")
+    print(f"{'-' * name_width}  {'-' * kind_width}  {'-' * 8}  {'-' * 7}")
+    for agent in agents:
+        targets = ", ".join(agent.get("targets") or [])
+        print(
+            f"{str(agent.get('name', '')).ljust(name_width)}  "
+            f"{str(agent.get('kind', '')).ljust(kind_width)}  "
+            f"{agent.get('base_url', '')}  {targets}"
+        )
+    return 0
+
+
 def resolve_identity_file(value=None):
     identity_file = value or os.environ.get("KALI_SSH_KEY")
     if identity_file is None and os.path.exists(os.path.expanduser(DEFAULT_KALI_KEY)):
@@ -212,6 +243,7 @@ def cmd_kali_attack_agents(args):
         ollama_timeout=args.ollama_timeout,
         report_path=args.report,
         skip_web_recon=args.skip_web_recon,
+        authorization_statement=args.authorization,
     )
     summary = report["summary"]
     if args.fail_on_findings and (summary["fail"] or summary["error"] or summary["unparsed"]):
@@ -229,10 +261,27 @@ def cmd_kali_attack_url(args):
         ssh_timeout=args.ssh_timeout,
         report_path=args.report,
         skip_web_recon=args.skip_web_recon,
+        include_agent_probes=args.include_agent_probes or not args.web_app,
+        include_web_payloads=args.web_app,
+        tunnel_local=args.tunnel_local,
+        local_port=args.local_port,
+        remote_port=args.remote_port,
+        authorization_statement=args.authorization,
     )
     summary = report["summary"]
     if args.fail_on_findings and (summary["fail"] or summary["error"] or summary["unparsed"]):
         return 1
+    return 0
+
+
+def cmd_chat(args):
+    from red_team_assistant import run_chat
+
+    run_chat(
+        message=args.message,
+        prefer_local_model=args.local_model,
+        kali_host=args.kali_host,
+    )
     return 0
 
 
@@ -256,6 +305,27 @@ def build_parser():
         help="Exit 1 when the scan records FAIL or ERROR results.",
     )
     scan_parser.set_defaults(func=cmd_scan)
+
+    chat_parser = subparsers.add_parser(
+        "chat",
+        help="Talk to the red-team assistant in natural language.",
+    )
+    chat_parser.add_argument(
+        "--message",
+        "-m",
+        help="Run one natural-language request instead of opening interactive chat.",
+    )
+    chat_parser.add_argument(
+        "--local-model",
+        action="store_true",
+        help="Use REDTEAM_NL_MODEL through local Ollama for intent parsing when available.",
+    )
+    chat_parser.add_argument(
+        "--kali-host",
+        default=DEFAULT_KALI_HOST,
+        help=f"Kali SSH host for natural-language Kali requests. Default: {DEFAULT_KALI_HOST}",
+    )
+    chat_parser.set_defaults(func=cmd_chat)
 
     local_parser = subparsers.add_parser(
         "local-red-team",
@@ -314,6 +384,21 @@ def build_parser():
     agents_health_parser.add_argument("--fail-on-down", action="store_true")
     agents_health_parser.set_defaults(func=cmd_agents_health)
 
+    agents_discover_parser = agents_subparsers.add_parser(
+        "discover",
+        help="Actively scan localhost for running compatible agent services.",
+    )
+    agents_discover_parser.add_argument("--host", default="127.0.0.1")
+    agents_discover_parser.add_argument(
+        "--ports",
+        help="Comma-separated ports and ranges, for example: 18080,18101-18110.",
+    )
+    agents_discover_parser.add_argument("--registry", default="agent_registry.json")
+    agents_discover_parser.add_argument("--timeout", type=float, default=0.35)
+    agents_discover_parser.add_argument("--json", action="store_true")
+    agents_discover_parser.add_argument("--fail-on-none", action="store_true")
+    agents_discover_parser.set_defaults(func=cmd_agents_discover)
+
     kali_parser = subparsers.add_parser("kali", help="Interact with the connected Kali lab host.")
     kali_subparsers = kali_parser.add_subparsers(dest="kali_command", required=True)
 
@@ -355,6 +440,11 @@ def build_parser():
         ),
     )
     attack_parser.add_argument("--ssh-timeout", type=int, default=8)
+    attack_parser.add_argument(
+        "--authorization",
+        required=True,
+        help="Human statement confirming authorization for this active Kali assessment.",
+    )
     attack_parser.add_argument("--local-port", type=int, default=18080)
     attack_parser.add_argument("--remote-port", type=int, default=18080)
     attack_parser.add_argument(
@@ -407,6 +497,37 @@ def build_parser():
         ),
     )
     url_attack_parser.add_argument("--ssh-timeout", type=int, default=8)
+    url_attack_parser.add_argument(
+        "--authorization",
+        required=True,
+        help="Human statement confirming authorization for this active URL assessment.",
+    )
+    url_attack_parser.add_argument(
+        "--web-app",
+        action="store_true",
+        help="Run bounded web-app probes for SQLi, XSS reflection, traversal indicators, prompt injection, and error leakage.",
+    )
+    url_attack_parser.add_argument(
+        "--include-agent-probes",
+        action="store_true",
+        help="Also POST the default AI-agent prompt probes to /invoke.",
+    )
+    url_attack_parser.add_argument(
+        "--tunnel-local",
+        action="store_true",
+        help="Reverse-tunnel a localhost URL to Kali before scanning.",
+    )
+    url_attack_parser.add_argument(
+        "--local-port",
+        type=int,
+        help="Local port to forward when --tunnel-local is used. Defaults to the URL port.",
+    )
+    url_attack_parser.add_argument(
+        "--remote-port",
+        type=int,
+        default=15173,
+        help="Kali loopback port for the reverse tunnel. Default: 15173.",
+    )
     url_attack_parser.add_argument(
         "--report",
         default="reports/kali_url_scan.json",

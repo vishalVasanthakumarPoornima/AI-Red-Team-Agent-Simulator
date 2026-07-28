@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -13,6 +14,10 @@ from pathlib import Path
 
 from agent_lab_server import DEFAULT_TARGETS
 from scanner.attack_runner import status_counts
+from scanner.detectors import redact_configured_secrets
+from redteam_platform.schemas import AssessmentProfile
+from redteam_platform.scope_policy import ScopePolicy
+from redteam_platform.settings import load_settings
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -34,17 +39,44 @@ DEFAULT_PROBES = (
     ),
 )
 ENDPOINT_PATHS = ("/", "/health", "/targets", "/invoke", "/admin", "/metrics", "/debug")
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 class KaliAttackError(RuntimeError):
     """Expected Kali attack workflow error."""
 
 
+def _redact_value(value):
+    if isinstance(value, str):
+        return redact_configured_secrets(value)
+    if isinstance(value, dict):
+        return {str(key): _redact_value(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_value(inner) for inner in value]
+    return value
+
+
+def _monitor_event(monitor, phase, action, status="info", details=None):
+    if monitor is not None:
+        monitor.event(phase, action, status=status, details=details or {})
+
+
+def _command_excerpt(value, limit=500):
+    text = " ".join(str(value or "").split())
+    text = ANSI_ESCAPE_RE.sub("", redact_configured_secrets(text))
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
 def _ssh_options(timeout, identity_file=None):
     args = [
         "ssh",
+        "-T",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "RequestTTY=no",
         "-o",
         f"ConnectTimeout={max(1, timeout)}",
     ]
@@ -60,19 +92,35 @@ def _ssh_args(host, timeout, identity_file=None):
 
 
 def _run_remote(host, timeout, command, identity_file=None, stdin=None, command_timeout=None):
-    result = subprocess.run(
-        [*_ssh_args(host, timeout, identity_file), command],
-        input=stdin,
-        capture_output=True,
-        text=True,
-        timeout=command_timeout,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [*_ssh_args(host, timeout, identity_file), command],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=command_timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        timeout_text = f"Remote command timed out after {command_timeout} seconds."
+        stderr = "\n".join(part for part in (str(stderr).rstrip(), timeout_text) if part)
+        return {
+            "command": redact_configured_secrets(command),
+            "returncode": 124,
+            "stdout": redact_configured_secrets(str(stdout).rstrip()),
+            "stderr": redact_configured_secrets(stderr),
+        }
     return {
-        "command": command,
+        "command": redact_configured_secrets(command),
         "returncode": result.returncode,
-        "stdout": result.stdout.rstrip(),
-        "stderr": result.stderr.rstrip(),
+        "stdout": redact_configured_secrets(result.stdout.rstrip()),
+        "stderr": redact_configured_secrets(result.stderr.rstrip()),
     }
 
 
@@ -167,7 +215,7 @@ def _endpoint_checks(host, port, timeout, identity_file):
             "set -u",
             f"base={shlex.quote(base_url)}",
             "for path in " + " ".join(shlex.quote(path) for path in ENDPOINT_PATHS) + "; do",
-            "  code=$(curl -s -m 8 -o /tmp/kali_agent_probe_body -w \"%{http_code}\" \"$base$path\")",
+            "  code=$(curl -s -m 3 -o /tmp/kali_agent_probe_body -w \"%{http_code}\" \"$base$path\")",
             "  printf \"%s %s\\n\" \"$code\" \"$path\"",
             "done",
         ]
@@ -178,7 +226,7 @@ def _endpoint_checks(host, port, timeout, identity_file):
         "bash -s",
         identity_file=identity_file,
         stdin=script,
-        command_timeout=30,
+        command_timeout=40,
     )
 
 
@@ -242,7 +290,7 @@ def _prompt_probe(host, port, timeout, identity_file, target, attack, prompt):
         "attack": attack,
         "prompt": prompt,
         "remote": remote_result,
-        "result": parsed,
+        "result": _redact_value(parsed),
         "parse_error": parse_error,
     }
 
@@ -286,7 +334,24 @@ def run_kali_agent_attack(
     ollama_timeout=None,
     report_path=None,
     skip_web_recon=False,
+    monitor=None,
+    authorization_statement=None,
+    policy_settings=None,
 ):
+    settings = policy_settings or load_settings()
+    policy = ScopePolicy(settings)
+    policy.authorize(
+        f"http://127.0.0.1:{local_port}",
+        statement=authorization_statement or "",
+        source="human-cli",
+        profile=AssessmentProfile.STANDARD,
+    )
+    policy.authorize(
+        f"ssh://{host}",
+        statement=authorization_statement or "",
+        source="human-cli",
+        profile=AssessmentProfile.STANDARD,
+    )
     selected_targets = tuple(targets or DEFAULT_TARGETS)
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -304,6 +369,13 @@ def run_kali_agent_attack(
     server = None
     tunnel = None
     try:
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "local_lab_server_starting",
+            status="running",
+            details={"local_port": local_port, "targets": selected_targets},
+        )
         server = _start_agent_server(
             local_port,
             selected_targets,
@@ -311,7 +383,21 @@ def run_kali_agent_attack(
             ollama_timeout=ollama_timeout,
         )
         _wait_for_local_health(local_port, timeout_seconds=20)
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "local_lab_server_healthy",
+            status="ok",
+            details={"local_port": local_port},
+        )
 
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "reverse_tunnel_starting",
+            status="running",
+            details={"host": host, "local_port": local_port, "remote_port": remote_port},
+        )
         tunnel = _start_reverse_tunnel(host, local_port, remote_port, ssh_timeout, identity_file)
         _wait_for_remote_health(
             host,
@@ -320,18 +406,100 @@ def run_kali_agent_attack(
             identity_file,
             timeout_seconds=20,
         )
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "reverse_tunnel_healthy",
+            status="ok",
+            details={"host": host, "remote_port": remote_port},
+        )
 
         if not skip_web_recon:
+            _monitor_event(
+                monitor,
+                "kali_recon",
+                "web_recon_started",
+                status="running",
+                details={"tools": ["nmap", "whatweb", "nikto"], "remote_port": remote_port},
+            )
             report["web_recon"] = _web_recon(host, remote_port, ssh_timeout, identity_file)
+            for tool_name, command_result in report["web_recon"].items():
+                _monitor_event(
+                    monitor,
+                    "kali_recon",
+                    "tool_completed",
+                    status="ok" if command_result.get("returncode") == 0 else "error",
+                    details={
+                        "tool": tool_name,
+                        "command": command_result.get("command"),
+                        "returncode": command_result.get("returncode"),
+                        "stdout_excerpt": _command_excerpt(command_result.get("stdout")),
+                        "stderr_excerpt": _command_excerpt(command_result.get("stderr")),
+                    },
+                )
+        _monitor_event(
+            monitor,
+            "kali_recon",
+            "endpoint_checks_started",
+            status="running",
+            details={"remote_port": remote_port, "paths": ENDPOINT_PATHS},
+        )
         report["endpoint_checks"] = _endpoint_checks(host, remote_port, ssh_timeout, identity_file)
+        _monitor_event(
+            monitor,
+            "kali_recon",
+            "endpoint_checks_completed",
+            status="ok" if report["endpoint_checks"].get("returncode") == 0 else "error",
+            details={
+                "returncode": report["endpoint_checks"].get("returncode"),
+                "stdout_excerpt": _command_excerpt(report["endpoint_checks"].get("stdout")),
+                "stderr_excerpt": _command_excerpt(report["endpoint_checks"].get("stderr")),
+            },
+        )
 
         for target in selected_targets:
             for attack, prompt in DEFAULT_PROBES:
-                report["probes"].append(
-                    _prompt_probe(host, remote_port, ssh_timeout, identity_file, target, attack, prompt)
+                _monitor_event(
+                    monitor,
+                    "kali_prompt_probe",
+                    "probe_started",
+                    status="running",
+                    details={"target": target, "attack": attack, "prompt": prompt},
+                )
+                probe = _prompt_probe(
+                    host,
+                    remote_port,
+                    ssh_timeout,
+                    identity_file,
+                    target,
+                    attack,
+                    prompt,
+                )
+                report["probes"].append(probe)
+                result = probe.get("result") or {}
+                _monitor_event(
+                    monitor,
+                    "kali_prompt_probe",
+                    "probe_completed",
+                    status="ok" if not probe.get("parse_error") else "error",
+                    details={
+                        "target": target,
+                        "attack": attack,
+                        "remote_returncode": probe.get("remote", {}).get("returncode"),
+                        "result_status": result.get("status"),
+                        "severity": result.get("severity"),
+                        "parse_error": probe.get("parse_error"),
+                    },
                 )
 
         report["summary"] = _summarize(report["probes"])
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "completed",
+            status="ok",
+            details=report["summary"],
+        )
         _print_probe_summary(report["probes"])
         summary = report["summary"]
         print(
@@ -343,9 +511,17 @@ def run_kali_agent_attack(
         if report_path:
             path = Path(report_path)
             path.parent.mkdir(parents=True, exist_ok=True)
+            report["report_path"] = str(path)
             path.write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(f"Report: {path}")
         return report
     finally:
         _stop_process(tunnel)
         _stop_process(server)
+        _monitor_event(
+            monitor,
+            "kali_agent_scan",
+            "local_processes_stopped",
+            status="ok",
+            details={"local_port": local_port, "remote_port": remote_port},
+        )

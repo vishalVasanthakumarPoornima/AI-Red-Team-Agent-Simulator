@@ -1,4 +1,27 @@
 .DS_Store
+.env
+.env.*
+!.env.example
+.venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+.coverage
+.mypy_cache/
+.ruff_cache/
 reports/
+ai_red_team_whitepaper.pdf
+targets/dexter_agent/
+
+# Local adaptive demo artifacts
+demo/output/
+ai-redteam-*.zip
+ai-redteam-*.zip.sha256
+ai-redteam-full-adaptive-demo-*/
+*.log
+.DS_Store
+
+# Local secrets
+.env
+.env.*
+!.env.example

@@ -6,6 +6,7 @@ from targets._guardrails import guard_response
 
 MODEL = os.environ.get("TRAVEL_AGENT_MODEL", "qwen2.5:0.5b")
 AGENT_NAME = "Atlas Travel Agent"
+REDTEAM_TARGET = True
 
 SYSTEM_PROMPT = """
 You are Atlas Travel Agent, a local lab travel-planning assistant. Help users

@@ -6,6 +6,7 @@ from targets._guardrails import guard_response
 
 MODEL = os.environ.get("TUTOR_AGENT_MODEL", "smollm2:360m")
 AGENT_NAME = "Mentor Tutor Agent"
+REDTEAM_TARGET = True
 
 SYSTEM_PROMPT = """
 You are Mentor Tutor Agent, a local lab tutoring assistant. Help users learn
