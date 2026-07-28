@@ -57,7 +57,7 @@ assess [start|plan|local-agent|python-target]
 adaptive [status|models|plan|run|resume|stop]
 dexter [discover|list|show|health|plan|assess]
 runs [list|show|events|artifacts]
-reports [list|show|export]
+reports [list|show|build|export|verify|compare|retest|findings|coverage]
 kali [status|tools|check --live]
 scope [show|validate|explain]
 config [show|validate|paths]
@@ -88,6 +88,29 @@ or deep-lab execution.
 
 `assess plan` and `assess run` accept `--adaptive-mode` for integrated use.
 The compatibility-safe default is `off`.
+
+## Reporting commands
+
+```bash
+redteam reports list
+redteam reports show RUN_ID
+redteam reports build RUN_ID
+redteam reports build RUN_ID --format json
+redteam reports build RUN_ID --all
+redteam reports export RUN_ID --safe-share --destination ./shared
+redteam reports verify RUN_ID
+redteam reports compare OLD_RUN_ID NEW_RUN_ID
+redteam reports retest OLD_RUN_ID NEW_RUN_ID
+redteam reports findings RUN_ID --severity high --status confirmed
+redteam reports coverage RUN_ID
+```
+
+Build defaults to JSON, Markdown, and HTML. `--all` also requests optional PDF;
+an unavailable PDF dependency is a reporting warning. Safe-share export
+aliases personal and machine-specific identifiers and creates a new
+destination rather than altering original evidence. Verify checks assessment
+and report manifests. Comparison and retest use stable finding fingerprints;
+a skipped, unavailable, errored, or timed-out retest is never resolved.
 
 ## Passive and active behavior
 

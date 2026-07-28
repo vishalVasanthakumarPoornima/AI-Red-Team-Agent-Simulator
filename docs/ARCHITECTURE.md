@@ -203,5 +203,26 @@ Adaptive records extend the existing unique run directory and its SHA-256
 manifest. Benchmarks use `reports/benchmarks/` and synthetic cases, so their
 metrics and recommendations cannot be confused with target findings.
 
-Phase 6 does not implement the Phase 7 global report redesign or Phase 8
-FastAPI migration.
+## Phase 7 canonical reporting
+
+```mermaid
+flowchart LR
+  A["Phase 1-6 run artifacts"] --> B["ArtifactNormalizer"]
+  B --> C["CanonicalReport (Pydantic)"]
+  C --> D["Deterministic findings, risk, coverage, remediation"]
+  C --> E["JSON renderer"]
+  C --> F["Markdown renderer"]
+  C --> G["Self-contained HTML renderer"]
+  C --> H["Optional PDF renderer"]
+  D --> I["Comparison and retest"]
+  E --> J["report_manifest.json"]
+  F --> J
+  G --> J
+  H --> J
+```
+
+Normalization is the only compatibility boundary. Renderers never parse raw
+run artifacts. Evidence references resolve beneath one run root, reject
+symlinks and traversal, and expose only bounded sanitized excerpts. The
+assessment manifest and report manifest are verified separately so report
+rebuilds cannot silently rewrite assessment evidence.

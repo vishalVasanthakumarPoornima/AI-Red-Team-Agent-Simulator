@@ -124,7 +124,7 @@ targets_app = typer.Typer(help="Parse, resolve, inspect, and health-check typed 
 assess_app = typer.Typer(help="Plan or run bounded authorized assessments.", invoke_without_command=True)
 dexter_app = typer.Typer(help="Discover, inspect, plan, and assess Dexter deployments.", invoke_without_command=True)
 runs_app = typer.Typer(help="Browse persisted run artifacts.")
-reports_app = typer.Typer(help="View and export existing report artifacts.")
+reports_app = typer.Typer(help="Build, verify, compare, retest, and export enterprise reports.")
 kali_app = typer.Typer(help="Inspect Kali readiness without scanning targets.")
 scope_app = typer.Typer(help="Inspect and validate scope policy.")
 config_app = typer.Typer(help="Inspect and validate non-secret configuration.")

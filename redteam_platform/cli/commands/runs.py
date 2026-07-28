@@ -11,7 +11,10 @@ from typing import Optional
 import typer
 
 from redteam_platform.cli.context import CLIContext
+from redteam_platform.cli.exit_codes import ExitCode
 from redteam_platform.cli.formatting import data_table, details_table, emit_envelope, empty, title
+from redteam_platform.reporting.models import ReportMode
+from redteam_platform.reporting.service import ReportingService
 from redteam_platform.run_browser import RunBrowser
 
 
@@ -23,6 +26,11 @@ def _browser(ctx: typer.Context) -> tuple[CLIContext, RunBrowser]:
 def _json(state: CLIContext, enabled: bool) -> bool:
     state.json_output = state.json_output or enabled
     return state.json_output
+
+
+def _reporting(ctx: typer.Context) -> tuple[CLIContext, ReportingService]:
+    state: CLIContext = ctx.find_root().obj
+    return state, ReportingService(state.settings.report_root)
 
 
 def register(root: typer.Typer, runs_app: typer.Typer, reports_app: typer.Typer) -> None:
@@ -209,20 +217,221 @@ def register(root: typer.Typer, runs_app: typer.Typer, reports_app: typer.Typer)
             title(state, f"{filename} — {run_id}")
             state.console.print(content)
 
-    @reports_app.command("export", help="Sanitize and export an existing report; refuses overwrite by default.")
+    @reports_app.command("build", help="Build canonical JSON, Markdown, HTML, or optional PDF reports.")
+    def reports_build(
+        ctx: typer.Context,
+        run_id: str,
+        format: Optional[str] = typer.Option(None, "--format"),
+        all_formats: bool = typer.Option(False, "--all"),
+        safe_share: bool = typer.Option(False, "--safe-share"),
+        overwrite: bool = typer.Option(False, "--overwrite"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        normalized = {"md": "markdown"}.get(str(format).lower(), str(format).lower()) if format else None
+        formats = ["json", "markdown", "html", "pdf"] if all_formats else ([normalized] if normalized else None)
+        data = service.build(
+            run_id,
+            formats=formats,
+            mode=ReportMode.SAFE_SHARE if safe_share else ReportMode.INTERNAL,
+            overwrite=overwrite,
+        )
+        payload = {
+            "run_id": run_id,
+            "mode": data["mode"],
+            "outputs": data["outputs"],
+        }
+        if state.json_output or json_output:
+            emit_envelope(state, "reports.build", payload, warnings=data["warnings"])
+        else:
+            state.console.print(details_table("Reports built", payload.items()))
+            for warning_data in data["warnings"]:
+                state.console.print(f"Warning: {warning_data['message']}")
+
+    @reports_app.command("export", help="Export an existing report or build a safe-share report set.")
     def reports_export(
         ctx: typer.Context,
         run_id: str,
         format: str = typer.Option("markdown", "--format"),
         destination: Optional[Path] = typer.Option(None, "--destination"),
+        safe_share: bool = typer.Option(False, "--safe-share"),
         overwrite: bool = typer.Option(False, "--overwrite"),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state, browser = _browser(ctx)
         _json(state, json_output)
-        path = browser.export(run_id, format=format, destination=destination, overwrite=overwrite)
-        data = {"run_id": run_id, "format": format, "path": str(path)}
+        if safe_share:
+            service = ReportingService(state.settings.report_root)
+            target = destination or (Path.cwd() / f"{run_id}-safe-share")
+            normalized = {"md": "markdown"}.get(format.lower(), format.lower())
+            path = service.export(
+                run_id,
+                target,
+                formats=[normalized],
+                safe_share=True,
+                overwrite=overwrite,
+            )
+        else:
+            path = browser.export(run_id, format=format, destination=destination, overwrite=overwrite)
+        data = {
+            "run_id": run_id,
+            "format": format,
+            "mode": "safe_share" if safe_share else "internal",
+            "path": str(path),
+        }
         if state.json_output or json_output:
             emit_envelope(state, "reports.export", data)
         else:
             state.console.print(details_table("Report exported", data.items()))
+
+    @reports_app.command("verify", help="Verify assessment and report manifests.")
+    def reports_verify(
+        ctx: typer.Context,
+        run_id: str,
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        data = service.verify(run_id)
+        if state.json_output or json_output:
+            emit_envelope(
+                state,
+                "reports.verify",
+                data,
+                success=data["status"] == "ok",
+                errors=[] if data["status"] == "ok" else ["Manifest verification failed."],
+            )
+        else:
+            state.console.print(details_table("Report integrity", data.items()))
+        if data["status"] != "ok":
+            raise typer.Exit(code=int(ExitCode.ARTIFACT_FAILURE))
+
+    @reports_app.command("compare", help="Compare two runs using stable finding fingerprints.")
+    def reports_compare(
+        ctx: typer.Context,
+        old_run_id: str,
+        new_run_id: str,
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        comparison = service.compare(old_run_id, new_run_id)
+        if state.json_output or json_output:
+            emit_envelope(state, "reports.compare", comparison)
+        else:
+            state.console.print(
+                details_table(
+                    "Report comparison",
+                    [
+                        ("old_run_id", old_run_id),
+                        ("new_run_id", new_run_id),
+                        ("new_findings", len(comparison.new_findings)),
+                        ("resolved_findings", len(comparison.resolved_findings)),
+                        ("persistent_findings", len(comparison.persistent_findings)),
+                        ("changed_findings", len(comparison.changed_findings)),
+                        ("coverage_change", comparison.coverage_change),
+                        ("probe_count_change", comparison.probe_count_change),
+                    ],
+                )
+            )
+
+    @reports_app.command("retest", help="Classify a new run as a retest without treating skipped probes as resolved.")
+    def reports_retest(
+        ctx: typer.Context,
+        old_run_id: str,
+        new_run_id: str,
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        comparison = service.retest(old_run_id, new_run_id)
+        if state.json_output or json_output:
+            emit_envelope(state, "reports.retest", comparison)
+        else:
+            state.console.print(
+                details_table(
+                    "Retest summary",
+                    [
+                        ("old_run_id", old_run_id),
+                        ("new_run_id", new_run_id),
+                        ("new", len(comparison.new_findings)),
+                        ("resolved", len(comparison.resolved_findings)),
+                        ("persistent_or_not_retested", len(comparison.persistent_findings)),
+                        ("changed", len(comparison.changed_findings)),
+                    ],
+                )
+            )
+
+    @reports_app.command("findings", help="List normalized findings with severity and status filters.")
+    def reports_findings(
+        ctx: typer.Context,
+        run_id: str,
+        severity: Optional[str] = typer.Option(None, "--severity"),
+        status: Optional[str] = typer.Option(None, "--status"),
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        findings = service.canonical(run_id).findings
+        if severity:
+            findings = [item for item in findings if str(item.severity).lower() == severity.lower()]
+        if status:
+            findings = [item for item in findings if str(item.status).lower() == status.lower()]
+        if state.json_output or json_output:
+            emit_envelope(state, "reports.findings", findings)
+        elif not findings:
+            empty(state, "No findings match the selected filters.")
+        else:
+            state.console.print(
+                data_table(
+                    f"Findings — {run_id}",
+                    ["ID", "Severity", "Confidence", "Status", "Category", "Title"],
+                    [
+                        (
+                            item.finding_id,
+                            item.severity,
+                            item.confidence,
+                            item.status,
+                            item.category,
+                            item.title,
+                        )
+                        for item in findings
+                    ],
+                )
+            )
+
+    @reports_app.command("coverage", help="Show normalized coverage and non-pass outcomes.")
+    def reports_coverage(
+        ctx: typer.Context,
+        run_id: str,
+        json_output: bool = typer.Option(False, "--json"),
+    ) -> None:
+        state, service = _reporting(ctx)
+        _json(state, json_output)
+        coverage = service.canonical(run_id).coverage
+        if state.json_output or json_output:
+            emit_envelope(state, "reports.coverage", coverage)
+        else:
+            state.console.print(
+                data_table(
+                    f"Coverage — {run_id}",
+                    ["Category", "State", "Planned", "Completed", "Passed", "Findings", "Unavailable", "Errors", "Timeouts", "%"],
+                    [
+                        (
+                            item.category,
+                            item.state,
+                            item.planned,
+                            item.completed,
+                            item.passed,
+                            item.findings,
+                            item.unavailable,
+                            item.errors,
+                            item.timeouts,
+                            item.percentage,
+                        )
+                        for item in coverage.categories
+                    ],
+                )
+            )
+            state.console.print(f"Overall coverage: {coverage.overall_percentage:.1f}%")

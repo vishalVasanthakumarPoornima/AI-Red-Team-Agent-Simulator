@@ -455,6 +455,17 @@ class DexterAssessmentService:
             models=[target.model_name] if target.model_name else [],
             errors=errors,
         )
+        from redteam_platform.reporting.service import generate_automatic_reports
+
+        generate_automatic_reports(self.settings.report_root, artifacts.run_id)
+        artifacts.build_manifest(
+            summary=base_summary,
+            authorization=primary,
+            tools=["httpx", "dexter-rules-1.0"]
+            + (["kali"] if include_kali else []),
+            models=[target.model_name] if target.model_name else [],
+            errors=errors,
+        )
         return summary, findings, reports
 
     @staticmethod

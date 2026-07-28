@@ -1,5 +1,27 @@
 # AI Agent Red Team Simulator
 
+## Phase 7 enterprise reporting
+
+Version 0.7.0 adds a canonical typed report model, deterministic executive and
+risk analysis, truthful coverage semantics, safe evidence references,
+internal and safe-share redaction, JSON/Markdown/HTML renderers, optional PDF,
+report manifests, stable-fingerprint comparison, and retest classification.
+
+```bash
+redteam reports build RUN_ID --all
+redteam reports export RUN_ID --safe-share --destination ./shared-report
+redteam reports verify RUN_ID
+redteam reports compare OLD_RUN_ID NEW_RUN_ID
+redteam reports retest OLD_RUN_ID NEW_RUN_ID
+```
+
+Completed assessments generate canonical report and summary artifacts without
+changing assessment findings. Reporting failures are recorded separately and
+never convert an assessment into a false success. Reports are security-
+assessment evidence, not compliance certification. See
+[enterprise reporting](docs/reporting.md), [report schema](docs/report-schema.md),
+and [safe-share exports](docs/safe-share.md).
+
 ## Phase 6 bounded adaptive assessments
 
 Phase 6 adds policy-controlled adaptive planning and local model benchmarking
@@ -104,6 +126,8 @@ redteam assess start \
   --category prompt_disclosure
 redteam runs list
 redteam reports list
+redteam reports build RUN_ID
+redteam reports verify RUN_ID
 redteam scope validate http://127.0.0.1:18080
 ```
 

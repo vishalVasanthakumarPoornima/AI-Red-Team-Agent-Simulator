@@ -429,4 +429,13 @@ class AdaptiveAssessmentEngine:
             tools=[adapter.name],
             models=[request.planner_model] if request.planner_model else [],
         )
+        from redteam_platform.reporting.service import generate_automatic_reports
+
+        generate_automatic_reports(artifacts.root, artifacts.run_id)
+        artifacts.build_manifest(
+            summary=summary,
+            authorization=request.authorization,
+            tools=[adapter.name],
+            models=[request.planner_model] if request.planner_model else [],
+        )
         return summary, findings, reports

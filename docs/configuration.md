@@ -1,5 +1,18 @@
 # Configuration
 
+## Phase 7 reporting settings
+
+The optional `[redteam.reporting]` table supports neutral typed branding and
+bounded renderer controls: `organization_name`, `project_name`,
+`report_title`, `assessment_owner`, `classification_label`, `logo_path`,
+`permitted_logo_roots`, `footer_text`, `accent_theme`, `contact`,
+`report_version`, `maximum_logo_bytes`, `evidence_excerpt_bytes`, and
+`evidence_maximum_bytes`.
+
+Logo files must be a permitted local PNG, JPEG, or SVG beneath an explicitly
+configured root and within the byte limit. Remote logos are rejected. Defaults
+are generic and contain no user or organization identity.
+
 ## Phase 5 target and budget settings
 
 `generic_targets`, `http_agent_definitions`, and

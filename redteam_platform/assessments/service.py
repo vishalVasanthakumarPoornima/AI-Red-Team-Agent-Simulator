@@ -403,6 +403,16 @@ class UnifiedAssessmentService:
                 models=[target.model_name] if target.model_name else [],
                 errors=errors,
             )
+            from redteam_platform.reporting.service import generate_automatic_reports
+
+            generate_automatic_reports(self.settings.report_root, artifacts.run_id)
+            artifacts.build_manifest(
+                summary=legacy_summary,
+                authorization=record,
+                tools=sorted({step.required_tool for step in plan.steps if step.required_tool}),
+                models=[target.model_name] if target.model_name else [],
+                errors=errors,
+            )
             return {
                 "target": target,
                 "health": health,

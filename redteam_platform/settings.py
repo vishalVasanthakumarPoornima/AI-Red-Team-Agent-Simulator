@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,6 +99,34 @@ class DexterSettings(BaseSettings):
         if not reference or any(marker in reference.lower() for marker in ("bearer ", "token=", "password=")):
             raise ValueError("Dexter authentication_reference must be a non-secret reference name")
         return reference
+
+
+class ReportingSettings(BaseSettings):
+    """Neutral, non-secret report branding and renderer configuration."""
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+    organization_name: str = "Security Assessment"
+    project_name: str = "AI Red Team Agent Simulator"
+    report_title: str = "Enterprise AI Security Assessment"
+    assessment_owner: str = "Authorized assessment team"
+    classification_label: str = "Internal"
+    logo_path: Path | None = None
+    permitted_logo_roots: list[Path] = Field(default_factory=list)
+    footer_text: str = "Authorized, bounded security-assessment evidence"
+    accent_theme: Literal["navy", "slate", "teal"] = "navy"
+    contact: str | None = None
+    report_version: str = "1.0"
+    maximum_logo_bytes: int = Field(default=1_000_000, ge=1, le=5_000_000)
+    evidence_excerpt_bytes: int = Field(default=2048, ge=0, le=65536)
+    evidence_maximum_bytes: int = Field(default=1_000_000, ge=1024, le=20_000_000)
+
+    @field_validator("logo_path")
+    @classmethod
+    def reject_remote_logo(cls, value: Path | None) -> Path | None:
+        if value is not None and str(value).startswith(("http://", "https://")):
+            raise ValueError("Report logo_path must be a permitted local file")
+        return value
 
 
 class ConfigurationError(ValueError):
@@ -210,6 +238,7 @@ class Settings(BaseSettings):
     passive_only: bool = True
     kali_ssh_host: str | None = None
     kali_ssh_key: Path | None = None
+    reporting: ReportingSettings = Field(default_factory=ReportingSettings)
     dexter: DexterSettings = Field(default_factory=DexterSettings)
     dexter_deployments: list[DexterSettings] = Field(default_factory=list)
     generic_targets: list[dict[str, Any]] = Field(default_factory=list)
@@ -307,6 +336,36 @@ class Settings(BaseSettings):
             return []
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator(
+        "adaptive_max_rounds",
+        "adaptive_max_total_probes",
+        "adaptive_max_probes_per_round",
+        "adaptive_max_model_calls",
+        "adaptive_max_duration_seconds",
+        "adaptive_no_novelty_rounds",
+        "adaptive_duplicate_rate_threshold",
+        "adaptive_prompt_max_characters",
+        "adaptive_provider_timeout_seconds",
+        "adaptive_provider_retries",
+        "adaptive_provider_repairs",
+        mode="before",
+    )
+    @classmethod
+    def blank_adaptive_numeric_uses_default(cls, value: Any, info: ValidationInfo) -> Any:
+        """Treat an empty or whitespace-only optional value as absent.
+
+        An empty environment export (``REDTEAM_ADAPTIVE_MAX_MODEL_CALLS=``) or a
+        whitespace-only one falls back to the field default instead of failing
+        typed parsing. A non-empty but malformed value (e.g. ``"ollama"``) is
+        deliberately left untouched so strict validation still rejects it — this
+        does not weaken validation, it only ignores blanks.
+        """
+        if isinstance(value, str) and value.strip() == "":
+            return cls.model_fields[info.field_name].get_default(
+                call_default_factory=True
+            )
         return value
 
     @field_validator("known_local_service_ports", mode="before")

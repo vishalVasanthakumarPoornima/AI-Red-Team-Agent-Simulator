@@ -312,6 +312,14 @@ class AdaptiveAssessmentService:
             stop_reason=str(result["state"].stop_decision.reason),
             models=[assignment.model for assignment in assignments],
         )
+        from redteam_platform.reporting.service import generate_automatic_reports
+
+        generate_automatic_reports(self.settings.report_root, store.run_id)
+        store.rebuild_manifest(
+            status=result["state"].status,
+            stop_reason=str(result["state"].stop_decision.reason),
+            models=[assignment.model for assignment in assignments],
+        )
         result["baseline"] = baseline
         result["artifacts"] = {
             "run": str(store.run_dir),
@@ -407,6 +415,14 @@ class AdaptiveAssessmentService:
             },
         )
         self._extend_report(store, result["summary"])
+        store.rebuild_manifest(
+            status=result["state"].status,
+            stop_reason=str(result["state"].stop_decision.reason),
+            models=[assignment.model for assignment in assignments],
+        )
+        from redteam_platform.reporting.service import generate_automatic_reports
+
+        generate_automatic_reports(self.settings.report_root, store.run_id)
         store.rebuild_manifest(
             status=result["state"].status,
             stop_reason=str(result["state"].stop_decision.reason),

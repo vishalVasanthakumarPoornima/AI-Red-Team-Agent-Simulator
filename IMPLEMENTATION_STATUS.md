@@ -1,6 +1,31 @@
 # Implementation Status
 
-Last updated: 2026-07-24
+Last updated: 2026-07-26
+
+## Phase 7 status
+
+Phase 7 is implemented as a canonical enterprise-reporting and result-analysis
+layer for existing Phase 1-6 artifacts.
+
+- `redteam_platform/reporting` normalizes legacy, unified, Dexter, Kali, and
+  adaptive artifacts into one nested Pydantic model.
+- Deterministic severity, confidence, risk inputs, standards mappings,
+  coverage, remediation, comparison, and retest logic remain authoritative.
+- JSON, GitHub Markdown, accessible self-contained HTML, and optional ReportLab
+  PDF consume the same model. PDF absence produces a warning, not assessment
+  failure.
+- Evidence stays referenced. Path traversal, absolute paths, symlink escape,
+  oversized excerpts, secret exposure, unsafe HTML, and remote report assets
+  are rejected or sanitized.
+- Internal and safe-share modes preserve original local evidence while
+  safe-share output aliases personal and machine-specific identifiers.
+- `redteam reports` adds build, verify, compare, retest, findings, coverage,
+  and safe-share export while retaining list, show, and existing export.
+- Completed assessments generate report and summary artifacts plus a separate
+  report manifest; report failure is captured independently.
+
+Phase 7 does not claim the Phase 8 authenticated FastAPI migration or Phase 9
+React dashboard.
 
 ## Phase 6 status
 
@@ -30,8 +55,8 @@ authority.
 - Normal Phase 6 tests and smokes require no Internet, live Ollama, Kali,
   Docker, root, public target, or real credential.
 
-Phase 6 does not claim the Phase 7 global report redesign or Phase 8 FastAPI
-migration.
+Phase 6 remains the assessment foundation consumed by the Phase 7 report
+normalizer.
 
 ## Phase 5 status
 

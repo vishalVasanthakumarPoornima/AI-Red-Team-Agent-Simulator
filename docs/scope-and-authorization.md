@@ -73,3 +73,13 @@ authorization are persisted as rejected proposals and never executed.
 Resume requires a fresh human statement and refuses manifest, target, adapter,
 or normalized-scope drift. Model output cannot mark an error as a pass, create
 a finding, or overrule a deterministic stop decision.
+
+## Reporting and safe sharing
+
+Reporting never expands assessment scope and does not execute probes. Internal
+reports retain authorized technical detail but still redact secrets.
+Safe-share reports additionally alias personal names, email addresses, phone
+numbers, hostnames, home-directory paths, SSH paths, and other
+machine-specific identifiers. Authorization statements are represented only
+by presence and bounded metadata; report output does not treat a model or
+generated statement as authorization.

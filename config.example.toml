@@ -70,6 +70,20 @@ duplicate_detection = 0.05
 redaction_safety = 0.05
 latency = 0.05
 
+[redteam.reporting]
+organization_name = "Security Assessment"
+project_name = "AI Red Team Agent Simulator"
+report_title = "Enterprise AI Security Assessment"
+assessment_owner = "Authorized assessment team"
+classification_label = "Internal"
+footer_text = "Authorized, bounded security-assessment evidence"
+accent_theme = "navy"
+report_version = "1.0"
+permitted_logo_roots = []
+maximum_logo_bytes = 1000000
+evidence_excerpt_bytes = 2048
+evidence_maximum_bytes = 1000000
+
 [redteam.profile_budgets.passive]
 max_probes = 12
 max_duration_seconds = 120
