@@ -8,23 +8,24 @@ import os
 import re
 import shutil
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from redteam_platform.schemas import (
     ArtifactRecord,
-    RunManifest,
     AssessmentEvent,
     AuthorizationRecord,
     Finding,
     InventorySnapshot,
+    RunManifest,
     RunSummary,
+)
+from redteam_platform.schemas import (
     new_run_id as schema_new_run_id,
 )
 from scanner.detectors import redact_configured_secrets
-
 
 SENSITIVE_HEADER_RE = re.compile(
     r"(?im)^(authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie):.*$"
@@ -93,7 +94,7 @@ def sanitize(value: Any) -> Any:
 class RunArtifacts:
     def __init__(self, root: str | Path, run_id: str | None = None):
         self.run_id = run_id or new_run_id()
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.now(UTC)
         self.root = Path(root)
         self.run_dir = self.root / self.run_id
         self.evidence_dir = self.run_dir / "evidence"
@@ -182,7 +183,7 @@ class RunArtifacts:
     ) -> RunManifest:
         entries: list[ArtifactRecord] = []
         for path in sorted(self.run_dir.rglob("*")):
-            if not path.is_file() or path.name == "manifest.json":
+            if not path.is_file() or path.name in {"manifest.json", "report_manifest.json"}:
                 continue
             data = path.read_bytes()
             suffix = path.suffix.lower()
@@ -205,7 +206,7 @@ class RunArtifacts:
         manifest = RunManifest(
             run_id=self.run_id,
             started_at=summary.started_at if summary else self.started_at,
-            ended_at=summary.ended_at if summary else datetime.now(timezone.utc),
+            ended_at=summary.ended_at if summary else datetime.now(UTC),
             status=str(summary.status) if summary else "created",
             stop_reason=summary.stop_reason if summary else "not started",
             tools=tools or [],
@@ -240,12 +241,12 @@ def apply_retention(root: str | Path, retention_days: int, now: datetime | None 
     root_path = Path(root)
     if not root_path.exists():
         return []
-    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=retention_days)
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
     removed: list[str] = []
     for run_dir in root_path.glob("run_*"):
         if not run_dir.is_dir():
             continue
-        modified = datetime.fromtimestamp(run_dir.stat().st_mtime, timezone.utc)
+        modified = datetime.fromtimestamp(run_dir.stat().st_mtime, UTC)
         if modified < cutoff:
             shutil.rmtree(run_dir)
             removed.append(run_dir.name)

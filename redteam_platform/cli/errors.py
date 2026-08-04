@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from redteam_platform.cli.exit_codes import ExitCode
 from redteam_platform.adapters import AdapterError
+from redteam_platform.cli.exit_codes import ExitCode
 from redteam_platform.scope_policy import ScopeDeniedError
 from redteam_platform.settings import ConfigurationError
 
@@ -43,6 +43,15 @@ class ArtifactCLIError(CLIError):
 
 def normalize_error(exc: Exception) -> CLIError:
     if isinstance(exc, CLIError):
+        if not exc.remediation:
+            if exc.error_type == "missing_authorization":
+                exc.remediation = (
+                    "Provide --authorization with a human-written statement for the exact target."
+                )
+            elif exc.error_type == "missing_target":
+                exc.remediation = "Provide the required target argument or --target option."
+            elif exc.code == ExitCode.INVALID_USAGE:
+                exc.remediation = "Review the command arguments and supported option values."
         return exc
     if isinstance(exc, ConfigurationError):
         return CLIError(

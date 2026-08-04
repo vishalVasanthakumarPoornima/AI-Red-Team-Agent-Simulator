@@ -1,12 +1,12 @@
-"""Short onboarding and safety help topics."""
+"""Generic command help plus short onboarding and safety topics."""
 
 from __future__ import annotations
 
 import typer
+import typer._click as click
 from rich.markdown import Markdown
 
 from redteam_platform.cli.context import CLIContext
-
 
 TOPICS = {
     "getting-started": """# Getting started
@@ -30,25 +30,57 @@ before execution, the target and budgets are shown, and cancellation before conf
 }
 
 
-def register(root: typer.Typer, help_app: typer.Typer) -> None:
-    root.add_typer(help_app, name="help")
-
-    @help_app.callback(invoke_without_command=True)
-    def help_root(ctx: typer.Context) -> None:
-        if ctx.invoked_subcommand is not None:
-            return
-        state: CLIContext = ctx.find_root().obj
-        state.console.print(Markdown(TOPICS["getting-started"]))
-        state.console.print("Topics: getting-started, authorization, inventory, assessments")
-
-    def topic_command(content: str):
-        def command(ctx: typer.Context) -> None:
-            state: CLIContext = ctx.find_root().obj
-            state.console.print(Markdown(content))
-
-        return command
-
-    for topic, content in TOPICS.items():
-        help_app.command(topic, help=f"Read {topic} guidance.")(
-            topic_command(content)
+def _command_help(ctx: typer.Context, path: list[str]) -> str:
+    current_command = ctx.find_root().command
+    current_context = click.Context(current_command, info_name="redteam")
+    resolved: list[str] = []
+    for part in path:
+        get_command = getattr(current_command, "get_command", None)
+        if not callable(get_command):
+            command_name = " ".join(("redteam", *resolved))
+            raise click.exceptions.UsageError(
+                f"'{command_name}' has no subcommand '{part}'. "
+                f"Run '{command_name} --help'."
+            )
+        next_command = get_command(current_context, part)
+        if next_command is None:
+            attempted = " ".join(path)
+            raise click.exceptions.UsageError(
+                f"No such command path '{attempted}'. Run 'redteam help' to list topics "
+                "or 'redteam --help' to list commands."
+            )
+        resolved.append(part)
+        current_command = next_command
+        current_context = click.Context(
+            current_command,
+            info_name=part,
+            parent=current_context,
+            color=current_context.color,
         )
+    return current_command.get_help(current_context)
+
+
+def register(root: typer.Typer) -> None:
+    @root.command(
+        "help",
+        help="Show onboarding guidance or help for any command path.",
+    )
+    def help_command(
+        ctx: typer.Context,
+        command: list[str] = typer.Argument(
+            None,
+            metavar="[COMMAND]...",
+            help="Command path or onboarding topic, for example 'assess run'.",
+        ),
+    ) -> None:
+        state: CLIContext = ctx.find_root().obj
+        path = list(command or [])
+        if not path:
+            state.console.print(Markdown(TOPICS["getting-started"]))
+            state.console.print("Topics: getting-started, authorization, inventory, assessments")
+            state.console.print("Command help: redteam help COMMAND [SUBCOMMAND]")
+            return
+        if len(path) == 1 and path[0] in TOPICS:
+            state.console.print(Markdown(TOPICS[path[0]]))
+            return
+        state.console.print(_command_help(ctx, path))

@@ -47,6 +47,11 @@ def verify_manifest(run_root: str | Path, filename: str = "manifest.json") -> Ar
             invalid.append("<invalid-entry>")
             continue
         relative = str(item.get("path") or "")
+        # The report manifest is an independently verified, replaceable index.
+        # Older run manifests included its hash, which made any later report
+        # rebuild invalidate otherwise immutable assessment evidence.
+        if filename == "manifest.json" and relative == "report_manifest.json":
+            continue
         try:
             path = _safe_path(root, relative)
         except ValueError:

@@ -1,16 +1,20 @@
 import json
 import os
 import tempfile
+import tomllib
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
+from redteam_platform import __version__
 from redteam_platform.cli import app
+from redteam_platform.cli.app import _propagate_exit_code
+from redteam_platform.cli.exit_codes import ExitCode
 from redteam_platform.cli.queries import InventoryQuery
 from redteam_platform.diagnostics import DiagnosticResult
+from redteam_platform.inventory import InventoryService
 from redteam_platform.inventory.models import (
     AdapterRun,
     AdapterState,
@@ -28,7 +32,6 @@ from redteam_platform.inventory.models import (
 from redteam_platform.run_browser import RunBrowser
 from redteam_platform.schemas import ScopeClassification
 from redteam_platform.settings import Settings
-from redteam_platform.inventory import InventoryService
 
 
 def sample_snapshot() -> InventorySnapshot:
@@ -102,9 +105,63 @@ class CLIEntrypointTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("inventory", result.stdout)
         self.assertIn("--non-interactive", result.stdout)
+        self.assertIn("Configuration:", result.stdout)
+        self.assertIn("Environment:", result.stdout)
+        self.assertIn("Common workflow:", result.stdout)
+        self.assertIn("redteam help", result.stdout)
+        self.assertIn("GROUP COMMAND", result.stdout)
+        self.assertEqual(self.runner.invoke(app, ["-h"]).exit_code, 0)
         self.assertEqual(self.runner.invoke(app, ["--version"]).exit_code, 0)
         payload = json.loads(self.runner.invoke(app, ["version", "--json"]).stdout)
         self.assertEqual(payload["command"], "version")
+
+    def test_help_command_routes_to_top_level_and_nested_commands(self):
+        doctor = self.runner.invoke(app, ["help", "doctor"])
+        self.assertEqual(doctor.exit_code, 0, doctor.output)
+        self.assertIn("Usage: redteam doctor", doctor.stdout)
+        self.assertIn("redteam doctor --strict", doctor.stdout)
+
+        nested = self.runner.invoke(app, ["help", "assess", "run"])
+        self.assertEqual(nested.exit_code, 0, nested.output)
+        self.assertIn("Usage: redteam assess run", nested.stdout)
+        self.assertIn("redteam assess run python://tool_agent", nested.stdout)
+
+    def test_invalid_help_path_and_invalid_command_are_actionable(self):
+        missing_help = self.runner.invoke(app, ["help", "not-a-command"])
+        self.assertEqual(missing_help.exit_code, 2)
+        self.assertNotIn("Traceback", missing_help.output)
+        self.assertIn("redteam --help", missing_help.output)
+
+        invalid = self.runner.invoke(app, ["not-a-command"])
+        self.assertEqual(invalid.exit_code, 2)
+        self.assertNotIn("Traceback", invalid.output)
+        self.assertIn("-h' for help", invalid.output)
+
+    def test_source_and_package_versions_match(self):
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(pyproject["project"]["version"], __version__)
+
+    def test_target_kind_alias_and_invalid_kind(self):
+        alias = self.runner.invoke(
+            app,
+            ["targets", "parse", "tool_agent", "--kind", "python", "--json"],
+        )
+        self.assertEqual(alias.exit_code, 0, alias.output)
+        self.assertEqual(json.loads(alias.stdout)["data"]["kind_hint"], "python_agent")
+
+        invalid = self.runner.invoke(
+            app,
+            ["targets", "parse", "tool_agent", "--kind", "definitely-invalid"],
+        )
+        self.assertEqual(invalid.exit_code, 2)
+        self.assertIn("Unsupported target kind", invalid.output)
+        self.assertNotIn("Traceback", invalid.output)
+
+    def test_console_entrypoint_propagates_nonzero_typer_exit(self):
+        with self.assertRaises(SystemExit) as raised:
+            _propagate_exit_code(int(ExitCode.ARTIFACT_FAILURE))
+        self.assertEqual(raised.exception.code, int(ExitCode.ARTIFACT_FAILURE))
+        self.assertIsNone(_propagate_exit_code(int(ExitCode.SUCCESS)))
 
     def test_no_args_non_tty_shows_help(self):
         result = self.runner.invoke(app, [])
@@ -154,6 +211,7 @@ class CLIEntrypointTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertFalse(payload["success"])
         self.assertEqual(payload["errors"][0]["type"], "missing_authorization")
+        self.assertIn("redteam help COMMAND", payload["errors"][0]["remediation"])
         self.assertNotIn("Traceback", result.stderr)
 
     def test_invalid_configuration_is_structured_in_global_json_mode(self):

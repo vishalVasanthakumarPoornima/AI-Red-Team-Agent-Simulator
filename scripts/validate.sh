@@ -37,16 +37,30 @@ echo
 echo "New platform CLI smoke:"
 "${PYTHON_BIN}" -m redteam_platform.cli --json doctor
 
-if "${PYTHON_BIN}" -m ruff --version >/dev/null 2>&1; then
+if [[ "${RUN_RUFF:-${RUN_STATIC_CHECKS:-0}}" == "1" ]]; then
+  if ! "${PYTHON_BIN}" -m ruff --version >/dev/null 2>&1; then
+    echo "ERROR: Ruff is unavailable. Run ./scripts/bootstrap_dev.sh first." >&2
+    exit 1
+  fi
   echo
   echo "Ruff:"
   "${PYTHON_BIN}" -m ruff check redteam_platform tests
+else
+  echo
+  echo "Ruff: SKIP (set RUN_RUFF=1 or RUN_STATIC_CHECKS=1 to enable)"
 fi
 
-if "${PYTHON_BIN}" -m mypy --version >/dev/null 2>&1; then
+if [[ "${RUN_MYPY:-${RUN_STATIC_CHECKS:-0}}" == "1" ]]; then
+  if ! "${PYTHON_BIN}" -m mypy --version >/dev/null 2>&1; then
+    echo "ERROR: MyPy is unavailable. Run ./scripts/bootstrap_dev.sh first." >&2
+    exit 1
+  fi
   echo
   echo "MyPy:"
   "${PYTHON_BIN}" -m mypy redteam_platform
+else
+  echo
+  echo "MyPy: SKIP (set RUN_MYPY=1 or RUN_STATIC_CHECKS=1 to enable)"
 fi
 
 echo

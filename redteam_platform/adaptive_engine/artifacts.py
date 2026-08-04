@@ -85,7 +85,7 @@ class AdaptiveArtifactStore:
         problems: list[str] = []
         for entry in manifest.get("artifacts") or []:
             relative = entry.get("path")
-            if not relative or relative == "manifest.json":
+            if not relative or relative in {"manifest.json", "report_manifest.json"}:
                 continue
             path = self._path(relative)
             if not path.is_file():
@@ -107,7 +107,7 @@ class AdaptiveArtifactStore:
         previous = self.read_json("manifest.json", {})
         entries: list[ArtifactRecord] = []
         for path in sorted(self.run_dir.rglob("*")):
-            if not path.is_file() or path.name == "manifest.json":
+            if not path.is_file() or path.name in {"manifest.json", "report_manifest.json"}:
                 continue
             suffix = path.suffix.lower()
             entries.append(

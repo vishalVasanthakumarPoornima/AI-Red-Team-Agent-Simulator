@@ -48,27 +48,47 @@ requires explicit options instead of prompting.
 ## Command hierarchy
 
 ```text
+init
 menu
 inventory [refresh|show|summary]
 models [list|running|installed|show|benchmark|recommend|benchmark-list|benchmark-show]
 agents [list|show|health]
 services [list|show|listeners]
-assess [start|plan|local-agent|python-target]
+targets [parse|resolve|show|capabilities|health]
+assess [start|plan|local-agent|python-target|run|python|agent|ollama|host|web]
 adaptive [status|models|plan|run|resume|stop]
 dexter [discover|list|show|health|plan|assess]
 runs [list|show|events|artifacts]
 reports [list|show|build|export|verify|compare|retest|findings|coverage]
-kali [status|tools|check --live]
+kali [status|tools|check]
 scope [show|validate|explain]
 config [show|validate|paths]
+api [serve]
 doctor
-help [getting-started|authorization|inventory|assessments]
+help [COMMAND ...]
 version
 ```
 
 Compatibility commands remain available: `inventory --json`, `models --json`,
 `agents --json`, `services --json`, `kali-status --json`, `targets`,
 `assess run`, `model benchmark`, and `api serve`.
+
+Every command page includes a realistic example. All of these help forms are
+supported:
+
+```bash
+redteam --help
+redteam -h
+redteam help
+redteam help doctor
+redteam help assess run
+redteam assess run --help
+```
+
+The onboarding topics `getting-started`, `authorization`, `inventory`, and
+`assessments` are also accepted by `redteam help TOPIC`. Invalid commands and
+help paths exit 2 and suggest the nearest `--help` route without printing a
+traceback.
 
 ## Adaptive commands
 

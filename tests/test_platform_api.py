@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from redteam_platform import __version__
 from redteam_platform.api import create_app
 from redteam_platform.settings import Settings
 
@@ -27,6 +28,10 @@ class PlatformAPITests(unittest.TestCase):
     def test_health_is_public_but_inventory_requires_token(self):
         self.assertEqual(self.client.get("/health").status_code, 200)
         self.assertEqual(self.client.get("/inventory").status_code, 401)
+        self.assertEqual(
+            self.client.get("/openapi.json").json()["info"]["version"],
+            __version__,
+        )
 
     def test_plan_enforces_scope_and_authorization(self):
         headers = {"Authorization": "Bearer test-token-not-a-real-secret"}
