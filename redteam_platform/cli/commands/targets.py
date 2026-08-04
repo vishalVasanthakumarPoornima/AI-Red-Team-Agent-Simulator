@@ -11,6 +11,20 @@ from redteam_platform.inventory import InventoryService
 from redteam_platform.inventory.models import AgentDescriptor, ItemType
 from redteam_platform.targets.models import ResolutionState, TargetKind
 
+KIND_ALIASES = {
+    "python": TargetKind.PYTHON_AGENT,
+    "http": TargetKind.HTTP_AGENT,
+    "openai": TargetKind.OPENAI_COMPATIBLE,
+    "ollama": TargetKind.OLLAMA_ENDPOINT,
+    "ip": TargetKind.IP_ADDRESS,
+    "web": TargetKind.WEB_APPLICATION,
+    "service": TargetKind.LOCAL_SERVICE,
+}
+KIND_HELP = (
+    "Target kind. Friendly aliases: python, http, openai, ollama, ip, web, service. "
+    "Canonical values such as python_agent and web_application are also accepted."
+)
+
 
 def _state(ctx: typer.Context) -> CLIContext:
     return ctx.find_root().obj
@@ -21,7 +35,20 @@ def _service(ctx: typer.Context) -> UnifiedAssessmentService:
 
 
 def _kind(value: str | None):
-    return TargetKind(value) if value else None
+    if not value:
+        return None
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in KIND_ALIASES:
+        return KIND_ALIASES[normalized]
+    try:
+        return TargetKind(normalized)
+    except ValueError as exc:
+        aliases = ", ".join(sorted(KIND_ALIASES))
+        canonical = ", ".join(item.value for item in TargetKind if item != TargetKind.UNKNOWN)
+        raise typer.BadParameter(
+            f"Unsupported target kind '{value}'. Aliases: {aliases}. Canonical values: {canonical}.",
+            param_hint="--kind",
+        ) from exc
 
 
 def register(root: typer.Typer, targets_app: typer.Typer) -> None:
@@ -67,7 +94,7 @@ def register(root: typer.Typer, targets_app: typer.Typer) -> None:
     def parse(
         ctx: typer.Context,
         target: str = typer.Argument(...),
-        kind: str | None = typer.Option(None, "--kind"),
+        kind: str | None = typer.Option(None, "--kind", help=KIND_HELP),
         model: str | None = typer.Option(None, "--model"),
         port: list[int] | None = typer.Option(None, "--port"),
         json_output: bool = typer.Option(False, "--json"),
@@ -95,7 +122,7 @@ def register(root: typer.Typer, targets_app: typer.Typer) -> None:
     def resolve(
         ctx: typer.Context,
         target: str = typer.Argument(...),
-        kind: str | None = typer.Option(None, "--kind"),
+        kind: str | None = typer.Option(None, "--kind", help=KIND_HELP),
         model: str | None = typer.Option(None, "--model"),
         port: list[int] | None = typer.Option(None, "--port"),
         refresh: bool = typer.Option(False, "--refresh"),
@@ -119,7 +146,7 @@ def register(root: typer.Typer, targets_app: typer.Typer) -> None:
     def show(
         ctx: typer.Context,
         target: str = typer.Argument(...),
-        kind: str | None = typer.Option(None, "--kind"),
+        kind: str | None = typer.Option(None, "--kind", help=KIND_HELP),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state = _state(ctx)
@@ -134,7 +161,7 @@ def register(root: typer.Typer, targets_app: typer.Typer) -> None:
     def capabilities(
         ctx: typer.Context,
         target: str = typer.Argument(...),
-        kind: str | None = typer.Option(None, "--kind"),
+        kind: str | None = typer.Option(None, "--kind", help=KIND_HELP),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state = _state(ctx)
@@ -162,7 +189,7 @@ def register(root: typer.Typer, targets_app: typer.Typer) -> None:
     def health(
         ctx: typer.Context,
         target: str = typer.Argument(...),
-        kind: str | None = typer.Option(None, "--kind"),
+        kind: str | None = typer.Option(None, "--kind", help=KIND_HELP),
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         state = _state(ctx)

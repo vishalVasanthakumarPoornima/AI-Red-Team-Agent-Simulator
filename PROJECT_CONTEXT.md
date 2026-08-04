@@ -1,5 +1,12 @@
 # Project Context: AI Agent Red Team Simulator
 
+> **Historical audit snapshot (2026-07-22).** This file preserves the evidence
+> and conclusions from the pre-implementation repository audit. It is not the
+> current setup or completion guide. See
+> [`README.md`](README.md),
+> [`docs/PROJECT_WALKTHROUGH.md`](docs/PROJECT_WALKTHROUGH.md), and
+> [`docs/FINAL_STATUS.md`](docs/FINAL_STATUS.md) for the final verified state.
+
 Audit date: 2026-07-22  
 Audited branch: codex/kali-agent-cli at 86a8081  
 Audit basis: current working tree, including pre-existing modified and untracked files  

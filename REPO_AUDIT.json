@@ -1,4 +1,10 @@
 {
+  "artifact_status": "historical_snapshot",
+  "superseded_by": [
+    "README.md",
+    "docs/PROJECT_WALKTHROUGH.md",
+    "docs/FINAL_STATUS.md"
+  ],
   "project_name": "AI Agent Red Team Simulator",
   "project_purpose": "A local-first, authorized security testing toolkit for evaluating Python and HTTP AI agents for prompt disclosure, secret leakage, unsafe tool behavior, weak refusals, and selected web-application weaknesses, with Kali-backed assessment and evidence reporting.",
   "languages": [

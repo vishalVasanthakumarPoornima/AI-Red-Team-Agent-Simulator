@@ -1,5 +1,9 @@
 # Implementation Status
 
+> **Historical phase log.** This document records how Phases 1-7 were delivered.
+> For current commands, verified checks, and remaining limitations, use
+> [`docs/FINAL_STATUS.md`](docs/FINAL_STATUS.md).
+
 Last updated: 2026-07-26
 
 ## Phase 7 status

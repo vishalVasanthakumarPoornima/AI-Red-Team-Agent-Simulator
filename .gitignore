@@ -6,6 +6,8 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
+dist/
 .coverage
 .mypy_cache/
 .ruff_cache/
@@ -19,9 +21,3 @@ ai-redteam-*.zip
 ai-redteam-*.zip.sha256
 ai-redteam-full-adaptive-demo-*/
 *.log
-.DS_Store
-
-# Local secrets
-.env
-.env.*
-!.env.example

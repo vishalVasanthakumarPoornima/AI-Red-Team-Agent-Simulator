@@ -7,7 +7,6 @@ import secrets
 import sys
 import traceback
 from pathlib import Path
-from typing import Optional
 
 import typer
 import typer._click as click
@@ -16,11 +15,11 @@ from typer.core import TyperGroup
 from redteam_platform import __version__
 from redteam_platform.artifacts import sanitize
 from redteam_platform.benchmark import benchmark_model
-from redteam_platform.cli.commands import assess as assess_commands
 from redteam_platform.cli.commands import adaptive as adaptive_commands
+from redteam_platform.cli.commands import assess as assess_commands
 from redteam_platform.cli.commands import config as config_commands
-from redteam_platform.cli.commands import doctor as doctor_commands
 from redteam_platform.cli.commands import dexter as dexter_commands
+from redteam_platform.cli.commands import doctor as doctor_commands
 from redteam_platform.cli.commands import help as help_commands
 from redteam_platform.cli.commands import inventory as inventory_commands
 from redteam_platform.cli.commands import kali as kali_commands
@@ -31,10 +30,9 @@ from redteam_platform.cli.commands import scope as scope_commands
 from redteam_platform.cli.commands import targets as targets_commands
 from redteam_platform.cli.context import CLIContext, build_context
 from redteam_platform.cli.errors import CLIError, normalize_error
+from redteam_platform.cli.examples import apply_help_epilogs
 from redteam_platform.cli.exit_codes import ExitCode
 from redteam_platform.cli.formatting import emit_json, error_panel
-from redteam_platform.inventory import InventoryService
-from redteam_platform.inventory.models import AgentDescriptor, ItemType
 
 
 class SafeTyperGroup(TyperGroup):
@@ -53,6 +51,11 @@ class SafeTyperGroup(TyperGroup):
             raise click.exceptions.Exit(ExitCode.SUCCESS) from exc
         except Exception as exc:
             error = normalize_error(exc)
+            remediation = error.remediation or "Review the command input and local configuration."
+            remediation = (
+                f"{remediation.rstrip()} Run `redteam help COMMAND` or "
+                "`redteam COMMAND --help` for usage."
+            )
             state = ctx.find_root().obj
             if isinstance(state, CLIContext):
                 if state.json_output:
@@ -68,13 +71,13 @@ class SafeTyperGroup(TyperGroup):
                                 {
                                     "type": error.error_type,
                                     "message": str(sanitize(error.message)),
-                                    "remediation": error.remediation,
+                                    "remediation": remediation,
                                 }
                             ],
                         },
                     )
                 else:
-                    error_panel(state, str(sanitize(error.message)), error.remediation)
+                    error_panel(state, str(sanitize(error.message)), remediation)
                     if state.debug:
                         state.error_console.print(
                             str(sanitize("".join(traceback.format_exception(exc))))
@@ -93,7 +96,7 @@ class SafeTyperGroup(TyperGroup):
                                     {
                                         "type": error.error_type,
                                         "message": str(sanitize(error.message)),
-                                        "remediation": error.remediation,
+                                        "remediation": remediation,
                                     }
                                 ],
                             },
@@ -102,7 +105,10 @@ class SafeTyperGroup(TyperGroup):
                         + "\n"
                     )
                 else:
-                    click.echo(f"Error: {sanitize(error.message)}", err=True)
+                    click.echo(
+                        f"Error: {sanitize(error.message)}\nNext: {remediation}",
+                        err=True,
+                    )
             raise SystemExit(int(error.code)) from exc
 
 
@@ -128,7 +134,6 @@ reports_app = typer.Typer(help="Build, verify, compare, retest, and export enter
 kali_app = typer.Typer(help="Inspect Kali readiness without scanning targets.")
 scope_app = typer.Typer(help="Inspect and validate scope policy.")
 config_app = typer.Typer(help="Inspect and validate non-secret configuration.")
-help_app = typer.Typer(help="Read onboarding and safety topics.", invoke_without_command=True)
 adaptive_app = typer.Typer(
     help="Plan, run, resume, and stop bounded adaptive assessments.",
     invoke_without_command=True,
@@ -145,7 +150,7 @@ kali_commands.register(app, kali_app)
 scope_commands.register(app, scope_app)
 config_commands.register(app, config_app)
 doctor_commands.register(app)
-help_commands.register(app, help_app)
+help_commands.register(app)
 menu_commands.register(app)
 
 
@@ -158,8 +163,8 @@ def _version_callback(value: bool) -> None:
 @app.callback(invoke_without_command=True)
 def root(
     ctx: typer.Context,
-    config: Optional[Path] = typer.Option(None, "--config", help="TOML configuration file."),
-    env_file: Optional[Path] = typer.Option(None, "--env-file", help="Environment file; defaults to .env."),
+    config: Path | None = typer.Option(None, "--config", help="TOML configuration file."),
+    env_file: Path | None = typer.Option(None, "--env-file", help="Environment file; defaults to .env."),
     json_output: bool = typer.Option(False, "--json", help="Emit only machine-readable JSON to stdout."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable ANSI color."),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress nonessential human output."),
@@ -167,7 +172,7 @@ def root(
     debug: bool = typer.Option(False, "--debug", help="Show sanitized tracebacks for unexpected errors."),
     non_interactive: bool = typer.Option(False, "--non-interactive", help="Reject missing prompt input."),
     yes: bool = typer.Option(False, "--yes", help="Confirm eligible UI prompts; never supplies authorization."),
-    profile: Optional[str] = typer.Option(None, "--profile", help="Named configuration profile metadata."),
+    profile: str | None = typer.Option(None, "--profile", help="Named configuration profile metadata."),
     version: bool = typer.Option(False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."),
 ) -> None:
     if quiet and verbose:
@@ -261,6 +266,7 @@ app.add_typer(api_app, name="api")
 @api_app.command("serve", help="Serve the authenticated API on loopback only.")
 def api_serve(ctx: typer.Context) -> None:
     import uvicorn
+
     from redteam_platform.api import create_app
 
     state: CLIContext = ctx.find_root().obj
@@ -277,9 +283,20 @@ def api_serve(ctx: typer.Context) -> None:
     )
 
 
+apply_help_epilogs(app)
+
+
+def _propagate_exit_code(result: object) -> None:
+    """Preserve nonzero ``typer.Exit`` codes in console-script mode."""
+
+    if isinstance(result, int) and result != int(ExitCode.SUCCESS):
+        raise SystemExit(result)
+
+
 def main() -> None:
     try:
-        app(standalone_mode=False)
+        result = app(standalone_mode=False)
+        _propagate_exit_code(result)
     except click.ClickException as exc:
         exc.show()
         raise SystemExit(exc.exit_code) from exc

@@ -403,6 +403,22 @@ class EvidenceIntegrityTests(unittest.TestCase):
         (self.root / "evidence.txt").unlink()
         self.assertTrue(verify_manifest(self.root, "report_manifest.json").missing)
 
+    def test_assessment_manifest_does_not_pin_replaceable_report_manifest(self):
+        (self.root / "report_manifest.json").write_text('{"artifacts": []}\n')
+        write_json(
+            self.root / "manifest.json",
+            {
+                "artifacts": [
+                    {
+                        "path": "report_manifest.json",
+                        "sha256": "stale-by-design",
+                        "bytes": 0,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(verify_manifest(self.root, "manifest.json").status, "ok")
+
 
 class RendererServiceTests(unittest.TestCase):
     def setUp(self):

@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from redteam_platform import __version__
 from redteam_platform.inventory.models import AgentDescriptor, ItemType, OllamaModel
 from redteam_platform.schemas import AssessmentBudget, AssessmentProfile
 from redteam_platform.scope_policy import ScopeDeniedError
@@ -57,7 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     service = ApplicationService(settings)
     registry = RunRegistry(settings.max_concurrency)
     rate_windows: dict[str, deque[float]] = defaultdict(deque)
-    app = FastAPI(title="AI Agent Red Team API", version="0.2.0")
+    app = FastAPI(title="AI Agent Red Team API", version=__version__)
 
     @app.middleware("http")
     async def limits(request: Request, call_next):
