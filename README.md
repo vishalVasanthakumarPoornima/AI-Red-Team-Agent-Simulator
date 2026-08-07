@@ -253,9 +253,8 @@ The CLI is a local application, not a frontend/backend pair. The optional FastAP
 | `scanner/`, `attacks/`, `targets/` | Compatibility scanner, payload packs, and enrolled synthetic targets |
 | `functional_agents/` | Ollama/LangGraph weather and travel targets |
 | `tests/` | Deterministic unit, CLI, API, service, assessment, and reporting tests |
-| `scripts/` | Bootstrap, validation, demo, service-smoke, and document helpers |
-| `demo/` | Optional adaptive Dexter presentation automation |
-| `docs/` | Operations, security, interfaces, reporting, demo, and study documentation |
+| `scripts/` | Bootstrap, validation, deterministic demo, and service-smoke helpers |
+| `docs/` | Curated operator, security, reporting, demo, and study documentation |
 
 ## Outputs and reports
 
@@ -270,7 +269,8 @@ First-class runs are isolated under `reports/runs/<run-id>/` and normally contai
 
 Enterprise report builds add canonical JSON, Markdown, HTML, optional PDF, and a report manifest. `redteam reports verify RUN_ID` detects missing or modified artifacts. Compatibility workflows may also write fixed paths under `reports/`; new first-class runs never overwrite one another.
 
-`reports/`, caches, logs, virtual environments, local `.env` files, and demo output are ignored by Git.
+`reports/`, `output/`, caches, logs, virtual environments, local `.env` files,
+and local `demo_video/` recording media are ignored by Git.
 
 ## Validation
 
@@ -319,15 +319,16 @@ The script moves only this repository's `reports/` directory to a timestamped te
 | Report verification fails | An artifact is missing or changed | Preserve the run, inspect `redteam runs artifacts RUN_ID`, and rerun the assessment if needed |
 | Kali or Docker is unavailable | Optional lab integration is not configured/running | Continue with the deterministic demo or configure it explicitly; missing optional coverage is never called a pass |
 
-For more detail, run `redteam help COMMAND`, `redteam doctor`, and see [docs/OPERATIONS.md](docs/OPERATIONS.md).
+For more detail, run `redteam help COMMAND`, `redteam doctor`, and use the
+[documentation index](docs/README.md).
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
 - [Demo guide](docs/DEMO_GUIDE.md)
 - [Project walkthrough and interview study guide](docs/PROJECT_WALKTHROUGH.md)
 - [Final status and verified commands](docs/FINAL_STATUS.md)
 - [CLI reference](docs/cli.md)
-- [Architecture](docs/ARCHITECTURE.md)
 - [Security model](docs/SECURITY.md)
 - [Scope and authorization](docs/scope-and-authorization.md)
 - [Unified assessments](docs/assessments.md)

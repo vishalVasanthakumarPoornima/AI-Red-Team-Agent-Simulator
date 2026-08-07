@@ -1,6 +1,6 @@
 # Final Project Status
 
-Final engineering pass: 2026-08-03
+Final engineering pass: 2026-08-06
 
 Release version: `0.7.0`
 
@@ -32,7 +32,13 @@ were not available on the final validation host.
   architecture and directory maps, troubleshooting, output guidance, and safe
   stop/reset instructions.
 - Added the demo guide and project walkthrough, and clearly labeled the older
-  repository audit and phase log as historical artifacts.
+  repository audit and phase logs before removing those superseded snapshots
+  during the final repository cleanup.
+- Removed the unused legacy `demo/` harness, duplicate emergency-fix bundle,
+  generated binary showcase outputs, unsupported document-generator scripts,
+  unreferenced attack wrappers, and redundant documentation pages.
+- Removed local `demo_video/` recording assets after the final recording pass;
+  future recordings can regenerate any presentation media outside Git.
 - Added regression tests for help routing, invalid inputs, aliases, exit-code
   propagation, version consistency, and report-manifest replacement.
 
@@ -136,6 +142,7 @@ start it with `redteam api serve` after setting a non-demo
 | File | Purpose | Why it matters |
 | --- | --- | --- |
 | `README.md` | Setup and operator guide | Defines the supported first experience |
+| `docs/README.md` | Curated documentation index | Prevents duplicate and stale navigation paths |
 | `pyproject.toml` | Package, entry point, and tool configuration | Source of install and version behavior |
 | `redteam_platform/cli/app.py` | Root CLI assembly and error boundary | All supported commands enter here |
 | `redteam_platform/cli/examples.py` | Central help examples | Keeps 74 command pages consistent |
@@ -146,7 +153,7 @@ start it with `redteam api serve` after setting a non-demo
 | `redteam_platform/assessments/` | Planning, bounded tools, evaluation, and coverage | Implements the deterministic assessment lifecycle |
 | `redteam_platform/reporting/` | Normalization and report generation | Produces and verifies portfolio artifacts |
 | `redteam_platform/api.py` | Optional authenticated API | Exposes loopback automation without changing policy |
-| `scripts/run_demo.sh` | Narrated demonstration | Reproduces the main portfolio story |
+| `scripts/run_demo.sh` | Narrated demonstration | Reproduces the single supported portfolio story |
 | `scripts/validate.sh` | Deterministic quality gate | Records what is actually supported |
 | `tests/` | Regression suite | Protects safety and demo behavior |
 

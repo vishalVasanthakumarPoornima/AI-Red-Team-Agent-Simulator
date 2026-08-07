@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from redteam_platform import __version__
@@ -103,13 +104,14 @@ class CLIEntrypointTests(unittest.TestCase):
     def test_help_and_versions(self):
         result = self.runner.invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("inventory", result.stdout)
-        self.assertIn("--non-interactive", result.stdout)
-        self.assertIn("Configuration:", result.stdout)
-        self.assertIn("Environment:", result.stdout)
-        self.assertIn("Common workflow:", result.stdout)
-        self.assertIn("redteam help", result.stdout)
-        self.assertIn("GROUP COMMAND", result.stdout)
+        help_text = strip_ansi(result.stdout)
+        self.assertIn("inventory", help_text)
+        self.assertIn("--non-interactive", help_text)
+        self.assertIn("Configuration:", help_text)
+        self.assertIn("Environment:", help_text)
+        self.assertIn("Common workflow:", help_text)
+        self.assertIn("redteam help", help_text)
+        self.assertIn("GROUP COMMAND", help_text)
         self.assertEqual(self.runner.invoke(app, ["-h"]).exit_code, 0)
         self.assertEqual(self.runner.invoke(app, ["--version"]).exit_code, 0)
         payload = json.loads(self.runner.invoke(app, ["version", "--json"]).stdout)
@@ -118,24 +120,28 @@ class CLIEntrypointTests(unittest.TestCase):
     def test_help_command_routes_to_top_level_and_nested_commands(self):
         doctor = self.runner.invoke(app, ["help", "doctor"])
         self.assertEqual(doctor.exit_code, 0, doctor.output)
-        self.assertIn("Usage: redteam doctor", doctor.stdout)
-        self.assertIn("redteam doctor --strict", doctor.stdout)
+        doctor_help = strip_ansi(doctor.stdout)
+        self.assertIn("Usage: redteam doctor", doctor_help)
+        self.assertIn("redteam doctor --strict", doctor_help)
 
         nested = self.runner.invoke(app, ["help", "assess", "run"])
         self.assertEqual(nested.exit_code, 0, nested.output)
-        self.assertIn("Usage: redteam assess run", nested.stdout)
-        self.assertIn("redteam assess run python://tool_agent", nested.stdout)
+        nested_help = strip_ansi(nested.stdout)
+        self.assertIn("Usage: redteam assess run", nested_help)
+        self.assertIn("redteam assess run python://tool_agent", nested_help)
 
     def test_invalid_help_path_and_invalid_command_are_actionable(self):
         missing_help = self.runner.invoke(app, ["help", "not-a-command"])
         self.assertEqual(missing_help.exit_code, 2)
-        self.assertNotIn("Traceback", missing_help.output)
-        self.assertIn("redteam --help", missing_help.output)
+        missing_help_text = strip_ansi(missing_help.output)
+        self.assertNotIn("Traceback", missing_help_text)
+        self.assertIn("redteam --help", missing_help_text)
 
         invalid = self.runner.invoke(app, ["not-a-command"])
         self.assertEqual(invalid.exit_code, 2)
-        self.assertNotIn("Traceback", invalid.output)
-        self.assertIn("-h' for help", invalid.output)
+        invalid_text = strip_ansi(invalid.output)
+        self.assertNotIn("Traceback", invalid_text)
+        self.assertIn("-h' for help", invalid_text)
 
     def test_source_and_package_versions_match(self):
         pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))

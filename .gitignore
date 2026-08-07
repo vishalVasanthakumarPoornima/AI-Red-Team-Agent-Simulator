@@ -12,11 +12,11 @@ dist/
 .mypy_cache/
 .ruff_cache/
 reports/
-ai_red_team_whitepaper.pdf
 targets/dexter_agent/
 
-# Local adaptive demo artifacts
-demo/output/
+# Local generated artifacts and recording media
+output/
+demo_video/
 ai-redteam-*.zip
 ai-redteam-*.zip.sha256
 ai-redteam-full-adaptive-demo-*/
