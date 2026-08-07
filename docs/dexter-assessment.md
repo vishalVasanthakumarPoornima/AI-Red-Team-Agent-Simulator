@@ -158,6 +158,5 @@ redteam dexter \
 Live Dexter, Docker, Ollama, and Kali validation remains opt-in.
 Authentication values must be supplied by a separately controlled integration;
 Dexter configuration stores only a safe reference. Automatic discovery is
-deliberately conservative. General host/web assessment, adaptive attack
-planning, enterprise report redesign, and a full FastAPI migration remain
-later phases.
+deliberately conservative. The optional API remains a loopback control plane;
+the repository does not claim a public multi-user deployment.
